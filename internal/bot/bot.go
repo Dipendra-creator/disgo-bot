@@ -16,14 +16,23 @@ import (
 )
 
 // DefaultIntents are the non-privileged gateway intents the bot requests.
-// Privileged intents (GuildMembers, MessageContent) are intentionally excluded
-// so the bot connects without portal configuration; member data is fetched via
-// REST when needed. Add them here once enabled in the developer portal.
+// Privileged intents (GuildMembers, MessageContent) are added separately when
+// config.Discord.PrivilegedIntents is set; member data is otherwise fetched via
+// REST when needed.
 const DefaultIntents = discordgo.IntentsGuilds |
 	discordgo.IntentsGuildMessages |
 	discordgo.IntentsGuildBans |
 	discordgo.IntentsGuildVoiceStates |
 	discordgo.IntentsGuildEmojis
+
+// privilegedIntents are the gateway intents that must also be enabled in the
+// Discord developer portal. They power member join/leave and message-content
+// logging.
+const privilegedIntents = discordgo.IntentsGuildMembers | discordgo.IntentsMessageContent
+
+// stateMessageCache is how many recent messages per channel the state keeps so
+// that message edit/delete logging can recover the prior content.
+const stateMessageCache = 200
 
 // Bot bundles the gateway session with the router and dependencies.
 type Bot struct {
@@ -51,7 +60,16 @@ func New(cfg *config.Config, log *zap.Logger, session *discordgo.Session, regist
 // Open wires handlers, sets intents and connects to the gateway. Command sync
 // and presence are performed in the ready handler.
 func (b *Bot) Open() error {
-	b.session.Identify.Intents = DefaultIntents
+	intents := DefaultIntents
+	if b.cfg.Discord.PrivilegedIntents {
+		intents |= privilegedIntents
+		// Cache recent messages so edit/delete logging can show prior content.
+		if b.session.State != nil {
+			b.session.State.MaxMessageCount = stateMessageCache
+		}
+		b.log.Info("privileged intents enabled (GuildMembers, MessageContent)")
+	}
+	b.session.Identify.Intents = intents
 
 	// Single dispatch entry-point for all interactions.
 	b.session.AddHandler(b.registry.Dispatch(b.deps))

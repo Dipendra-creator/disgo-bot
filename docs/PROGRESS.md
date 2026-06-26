@@ -24,6 +24,7 @@ casino features**.
 | **utility** module | ✅ Shipped |
 | **moderation** module | ✅ Shipped |
 | **tickets** module | ✅ Shipped |
+| **logging** module | ✅ Shipped |
 | Deployment (Docker, compose, k8s, CI) | ✅ Authored |
 
 **Verification (this environment — no Docker / no live token):**
@@ -76,6 +77,21 @@ Commands: `/ticket-setup` (category / staff role / log channel), `/ticket-panel`
 Channel creation is rollback-safe (DB insert failure → `ChannelDelete`).
 Interaction responses are always sent **before** the channel is deleted.
 
+### logging (`modules/logging`, migration `0004_logging.sql`)
+
+Mirrors gateway events into per-category log channels. Categories: `message`
+(edits/deletions with before/after content), `member` (joins/leaves), `server`
+(bans/unbans, channel + role create/delete). Configured via `/logging
+set|disable|status` (Manage Server).
+
+Unlike other modules this consumes **gateway events** (`Module.Events()`), not
+interactions — handlers run in discordgo's goroutines outside the router, so each
+is wrapped in a panic-recover guard. Per-guild settings are cached in-process
+(events fire hot) and invalidated on change. `member` events and message
+**content** need the privileged intents (`discord.privileged_intents`), which
+also enable a 200-message-per-channel state cache so edit/delete logs carry prior
+content.
+
 ## Conventions worth knowing
 
 - **Custom-ID routing:** `module:action:arg1:arg2`, encoded/decoded by
@@ -95,12 +111,12 @@ Interaction responses are always sent **before** the channel is deleted.
 
 Built incrementally on the same foundation, module by module:
 
-- leveling, economy (non-gambling), verification, logging, automod, giveaways, AI assistant.
+- leveling, economy (non-gambling), verification, automod, giveaways, AI assistant.
 - Cross-cutting: Redis Streams workers, full RBAC engine, gateway sharding,
   REST/web dashboard + OAuth2.
 
-The **next module** has not been chosen — confirm with the maintainer before
-starting one (the spec mandates incremental, one-module-at-a-time delivery).
+Modules are being built in sequence (logging → leveling → economy → verification
+→ automod → giveaways → AI), each verified and committed independently.
 
 ## How to verify locally
 

@@ -43,6 +43,11 @@ type DiscordConfig struct {
 	DevGuildID string `yaml:"dev_guild_id"`
 	// Shards is the total shard count. 0 lets discordgo decide (single shard now).
 	Shards int `yaml:"shards" validate:"gte=0"`
+	// PrivilegedIntents enables the GuildMembers and MessageContent gateway
+	// intents (needed for member join/leave and message-content logging). These
+	// MUST also be toggled on in the Discord developer portal, or the gateway
+	// refuses the connection. Off by default so the bot connects out-of-the-box.
+	PrivilegedIntents bool `yaml:"privileged_intents"`
 }
 
 // IsDev reports whether commands should be registered guild-scoped.
@@ -190,6 +195,7 @@ func applyEnv(cfg *Config) {
 	setStr(&cfg.Discord.Token, "DISCORD_TOKEN")
 	setStr(&cfg.Discord.AppID, "DISCORD_APP_ID")
 	setStr(&cfg.Discord.DevGuildID, "DISCORD_DEV_GUILD_ID")
+	setBool(&cfg.Discord.PrivilegedIntents, "DISCORD_PRIVILEGED_INTENTS")
 
 	setStr(&cfg.Postgres.DSN, "DATABASE_URL")
 	setStr(&cfg.Postgres.Host, "POSTGRES_HOST")

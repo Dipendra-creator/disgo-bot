@@ -20,6 +20,10 @@ discord:
   dev_guild_id: ""
   # Total shard count. 0 = single shard (let discordgo decide).
   shards: 0
+  # Enable the GuildMembers + MessageContent privileged intents (member
+  # join/leave and message-content logging). Must ALSO be enabled in the Discord
+  # developer portal, or the gateway refuses the connection.
+  privileged_intents: false
 
 postgres:
   # A full DSN takes precedence over the individual fields below.

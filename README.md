@@ -70,6 +70,28 @@ to the log channel and the ticket channel is deleted. One open ticket per user.
 Buttons: **Open Ticket** (panel) → **Claim** / **Close** (in-channel) → close
 shows an ephemeral **Confirm/Cancel** prompt before deleting.
 
+### Logging
+
+Mirrors gateway events into per-category log channels. Configure with one
+command; each category routes to its own channel (or is disabled).
+
+| Category | Events |
+| --- | --- |
+| `message` | message edits and deletions (with before/after content) |
+| `member` | member joins and leaves |
+| `server` | bans/unbans, channel create/delete, role create/delete |
+
+| Command | Permission | Purpose |
+| --- | --- | --- |
+| `/logging set <category> <channel>` | Manage Server | Route a category to a channel |
+| `/logging disable <category>` | Manage Server | Stop logging a category |
+| `/logging status` | Manage Server | Show the current configuration |
+
+> **Privileged intents:** `member` events and message **content** require the
+> `GuildMembers` and `MessageContent` intents. Set `discord.privileged_intents:
+> true` (or `DISCORD_PRIVILEGED_INTENTS=true`) **and** enable them in the Discord
+> developer portal. Other events (bans, channels, roles) work without them.
+
 ## Architecture
 
 Clean Architecture with an interface-driven module plugin system. Each feature
@@ -199,9 +221,9 @@ The router, metrics, logging, DB and cache are provided automatically via `Deps`
 ## Roadmap
 
 Built incrementally on this foundation. Shipped: utility, **moderation**,
-**tickets**. Next: leveling, economy, verification, logging, automod, giveaways,
-AI assistant, plus Redis Streams workers, full RBAC, gateway sharding, and a
-REST/web dashboard with OAuth2.
+**tickets**, **logging**. Next: leveling, economy, verification, automod,
+giveaways, AI assistant, plus Redis Streams workers, full RBAC, gateway
+sharding, and a REST/web dashboard with OAuth2.
 
 ## License
 
