@@ -1,0 +1,66 @@
+# Local/prod-like stack: Postgres + Redis + the bot.
+#
+#   cp .env.example .env   # fill in DISCORD_TOKEN, DISCORD_APP_ID
+#   docker compose -f deployments/docker-compose.yml up --build
+#
+# Build context is the repo root so the Dockerfile can COPY the whole module.
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: disgo
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d disgo"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  bot:
+    build:
+      context: ..
+      dockerfile: deployments/docker/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DISGO_ENV: production
+      DISCORD_TOKEN: ${DISCORD_TOKEN:?set DISCORD_TOKEN in .env}
+      DISCORD_APP_ID: ${DISCORD_APP_ID:?set DISCORD_APP_ID in .env}
+      DISCORD_DEV_GUILD_ID: ${DISCORD_DEV_GUILD_ID:-}
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/disgo?sslmode=disable
+      REDIS_ENABLED: "true"
+      REDIS_ADDR: redis:6379
+      LOG_LEVEL: info
+      LOG_FORMAT: json
+    ports:
+      - "8080:8080" # health
+      - "9090:9090" # metrics
+
+volumes:
+  pgdata:
+  redisdata:

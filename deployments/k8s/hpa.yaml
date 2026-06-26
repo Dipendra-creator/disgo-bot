@@ -1,0 +1,24 @@
+# NOTE: A Discord gateway connection cannot be horizontally scaled without
+# sharding — each shard must own a distinct slice of guilds. This HPA is a
+# PLACEHOLDER, disabled by minReplicas == maxReplicas == 1, reserved for when
+# the sharding manager lands (then minReplicas/maxReplicas become the shard
+# count and a StatefulSet replaces the Deployment). Do not enable as-is.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: disgo-bot
+  namespace: disgo
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: disgo-bot
+  minReplicas: 1
+  maxReplicas: 1
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 75

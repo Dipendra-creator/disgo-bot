@@ -1,0 +1,21 @@
+# Headless service exposing the health and metrics ports for in-cluster
+# probes and Prometheus scraping. The bot dials Discord outbound; it does not
+# serve gateway traffic, so no external/LoadBalancer service is needed.
+apiVersion: v1
+kind: Service
+metadata:
+  name: disgo-bot
+  namespace: disgo
+  labels:
+    app.kubernetes.io/name: disgo-bot
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: disgo-bot
+  ports:
+    - name: health
+      port: 8080
+      targetPort: health
+    - name: metrics
+      port: 9090
+      targetPort: metrics

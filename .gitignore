@@ -1,0 +1,23 @@
+# Build artifacts
+/bin/
+*.exe
+disgo
+
+# Local config & secrets — never commit
+config.yaml
+config.*.yaml
+!configs/config.example.yaml
+.env
+.env.*
+!.env.example
+
+# Test / coverage output
+coverage.out
+*.test
+*.out
+
+# Editor / OS noise
+.idea/
+.vscode/
+*.swp
+.DS_Store

@@ -1,0 +1,35 @@
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gofmt
+    - goimports
+    - misspell
+    - unconvert
+    - revive
+    - bodyclose
+    - nilerr
+
+linters-settings:
+  goimports:
+    local-prefixes: github.com/dipu-sharma/disgo-bot
+  revive:
+    rules:
+      - name: exported
+        disabled: false
+
+issues:
+  exclude-rules:
+    # Test files may skip error checks for brevity.
+    - path: _test\.go
+      linters:
+        - errcheck
+  max-issues-per-linter: 0
+  max-same-issues: 0

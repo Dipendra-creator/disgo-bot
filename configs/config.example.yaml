@@ -1,0 +1,59 @@
+# disgo-bot configuration example.
+#
+# Copy to ./config.yaml and fill in the secrets, OR supply everything via
+# environment variables (see .env.example). Env vars override file values.
+#
+#   cp configs/config.example.yaml config.yaml
+#
+# The path is resolved from the DISGO_CONFIG env var, then ./config.yaml.
+
+# Deployment environment: "development" or "production".
+env: development
+
+discord:
+  # Bot token. Prefer the DISCORD_TOKEN env var over committing this.
+  token: ""
+  # Application (client) ID, used to register slash commands.
+  app_id: ""
+  # When set, commands register guild-scoped for instant updates in dev.
+  # Leave empty in production to register commands globally (up to ~1h sync).
+  dev_guild_id: ""
+  # Total shard count. 0 = single shard (let discordgo decide).
+  shards: 0
+
+postgres:
+  # A full DSN takes precedence over the individual fields below.
+  # dsn: "postgres://postgres:postgres@localhost:5432/disgo?sslmode=disable"
+  host: localhost
+  port: 5432
+  user: postgres
+  password: postgres
+  database: disgo
+  ssl_mode: disable
+  pool_max: 10
+
+redis:
+  # When disabled, the bot uses an in-process memory cache (dev-friendly).
+  enabled: false
+  addr: localhost:6379
+  password: ""
+  db: 0
+
+log:
+  # debug | info | warn | error
+  level: info
+  # json (production) | console (development)
+  format: console
+
+sentry:
+  enabled: false
+  dsn: ""
+
+metrics:
+  enabled: true
+  addr: ":9090"
+  path: /metrics
+
+http:
+  # Health/readiness probe server (/healthz, /readyz).
+  health_addr: ":8080"
