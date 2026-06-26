@@ -25,6 +25,7 @@ casino features**.
 | **moderation** module | ✅ Shipped |
 | **tickets** module | ✅ Shipped |
 | **logging** module | ✅ Shipped |
+| **leveling** module | ✅ Shipped |
 | Deployment (Docker, compose, k8s, CI) | ✅ Authored |
 
 **Verification (this environment — no Docker / no live token):**
@@ -91,6 +92,17 @@ is wrapped in a panic-recover guard. Per-guild settings are cached in-process
 **content** need the privileged intents (`discord.privileged_intents`), which
 also enable a 200-message-per-channel state cache so edit/delete logs carry prior
 content.
+
+### leveling (`modules/leveling`, migration `0005_leveling.sql`)
+
+XP-and-ranks system. Members earn `xp_min`–`xp_max` XP per message, gated by a
+per-user cooldown enforced in the **cache** (`lvl:cd:<guild>:<user>` with TTL) so
+the hot path avoids a DB write on every message. Cumulative XP maps to a level
+via the fixed `5·L²+50·L+100` curve (`levels.go`). On level-up the module grants
+reward roles (stacked or highest-only) and announces (configurable channel).
+Commands: `/rank`, `/leaderboard` (paginated), `/level-config`, `/level-role`,
+`/xp` (admin). Atomic XP increment via `INSERT … ON CONFLICT … RETURNING`;
+settings cached in-process and invalidated on change.
 
 ## Conventions worth knowing
 

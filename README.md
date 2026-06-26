@@ -92,6 +92,24 @@ command; each category routes to its own channel (or is disabled).
 > true` (or `DISCORD_PRIVILEGED_INTENTS=true`) **and** enable them in the Discord
 > developer portal. Other events (bans, channels, roles) work without them.
 
+### Leveling
+
+Members earn XP for chatting (rate-limited per user via a cache-backed
+cooldown), level up along the classic `5·L² + 50·L + 100` curve, and can earn
+reward roles. Level-ups are announced; rank cards and a paginated leaderboard
+render with a progress bar.
+
+| Command | Permission | Purpose |
+| --- | --- | --- |
+| `/rank [user]` | — | Show level, rank and progress to the next level |
+| `/leaderboard` | — | Paginated server XP leaderboard |
+| `/level-config <sub>` | Manage Server | enable/disable, cooldown, xp-range, announce, stack |
+| `/level-role add\|remove\|list` | Manage Roles | Map levels to reward roles |
+| `/xp give\|set\|reset` | Manage Server | Adjust a member's XP |
+
+Reward roles can **stack** (keep every earned role) or keep only the highest.
+XP gain needs only `GuildMessages` — no privileged intents.
+
 ## Architecture
 
 Clean Architecture with an interface-driven module plugin system. Each feature
@@ -221,7 +239,7 @@ The router, metrics, logging, DB and cache are provided automatically via `Deps`
 ## Roadmap
 
 Built incrementally on this foundation. Shipped: utility, **moderation**,
-**tickets**, **logging**. Next: leveling, economy, verification, automod,
+**tickets**, **logging**, **leveling**. Next: economy, verification, automod,
 giveaways, AI assistant, plus Redis Streams workers, full RBAC, gateway
 sharding, and a REST/web dashboard with OAuth2.
 
