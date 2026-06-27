@@ -97,6 +97,9 @@ func (s *Server) routes() http.Handler {
 
 	mux.HandleFunc("GET /api/me", s.requireAuth(s.handleMe))
 	mux.HandleFunc("GET /api/guilds", s.requireAuth(s.handleGuilds))
+	mux.HandleFunc("GET /api/guilds/{id}/overview", s.requireAuth(s.requireGuildManage(s.handleOverview)))
+	mux.HandleFunc("GET /api/guilds/{id}/roles", s.requireAuth(s.requireGuildManage(s.handleRoles)))
+	mux.HandleFunc("GET /api/guilds/{id}/channels", s.requireAuth(s.requireGuildManage(s.handleChannels)))
 	mux.HandleFunc("GET /api/guilds/{id}/modules", s.requireAuth(s.requireGuildManage(s.handleModules)))
 	mux.HandleFunc("GET /api/guilds/{id}/modules/{mod}", s.requireAuth(s.requireGuildManage(s.handleModuleGet)))
 	mux.HandleFunc("PATCH /api/guilds/{id}/modules/{mod}", s.requireAuth(s.requireGuildManage(s.handleModulePatch)))
