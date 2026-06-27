@@ -21,6 +21,7 @@ casino features**.
 | Config (YAML + env + validation) | ✅ Shipped |
 | Observability (zap, Prometheus, Sentry, health) | ✅ Shipped |
 | UI library (embeds, buttons, Components v2, paginator) | ✅ Shipped |
+| **help** module | ✅ Shipped |
 | **utility** module | ✅ Shipped |
 | **moderation** module | ✅ Shipped |
 | **tickets** module | ✅ Shipped |
@@ -57,6 +58,16 @@ that requires a bot token + Postgres on the user's machine.
 - `shared` — `Module` interface, `Deps` DI container, `Command`, `Context`, permissions, custom-ID codec, errors.
 - `pkg` — `snowflake`, `humanize`, `duration` helpers.
 - `modules/utility` — `/ping`, `/serverinfo` (+ refresh button), `/userinfo` (+ context menu), `/avatar` (size buttons).
+
+### help (`modules/help`, no migration)
+
+Self-contained `/help` command. Imports **no** other module — a hand-authored
+catalog (`catalog.go`) is the single source of truth for every command's usage,
+permission and examples, keeping the modules independent. Renders a Components v2
+overview with a category **select menu**, per-category command lists, and a
+per-command deep view. The `command` option **autocompletes** across the whole
+catalog (prefix-then-substring ranked). All responses ephemeral. A catalog test
+guards structural invariants and the 4000-char Components v2 budget per view.
 
 ### moderation (`modules/moderation`, migration `0002_moderation.sql`)
 

@@ -25,6 +25,7 @@ import (
 	"github.com/dipu-sharma/disgo-bot/modules/automod"
 	"github.com/dipu-sharma/disgo-bot/modules/economy"
 	"github.com/dipu-sharma/disgo-bot/modules/giveaways"
+	"github.com/dipu-sharma/disgo-bot/modules/help"
 	"github.com/dipu-sharma/disgo-bot/modules/leveling"
 	"github.com/dipu-sharma/disgo-bot/modules/logging"
 	"github.com/dipu-sharma/disgo-bot/modules/moderation"
@@ -101,6 +102,7 @@ func run() error {
 	// Register feature modules. New modules are added to this slice.
 	registry := router.NewRegistry(log)
 	modules := []shared.Module{
+		help.New(),
 		utility.New(),
 		moderation.New(),
 		tickets.New(),

@@ -18,6 +18,17 @@ incrementally on top of this foundation.
 
 ## Features
 
+### Help
+
+| Command | What it shows |
+| --- | --- |
+| `/help` | Browsable, **Components v2** guide to every command — overview with a category select menu, per-category command lists, and per-command examples |
+| `/help command:<name>` | Jumps straight to one command's full examples; the `command` option **autocompletes** across the whole catalog |
+
+The help module is self-contained (it imports no other module) and ships a
+hand-authored catalog of every command with real-world examples, so the modules
+stay independent while the guide stays accurate.
+
 ### Utility
 
 | Command | What it shows |
