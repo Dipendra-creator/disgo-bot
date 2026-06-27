@@ -76,6 +76,16 @@ func (s *Service) Setup(ctx context.Context, guildID string, roleID, logChannelI
 	return nil
 }
 
+// SaveSettings persists the core config (excluding panel references) and
+// refreshes the cache. Used by the web dashboard's partial-patch path.
+func (s *Service) SaveSettings(ctx context.Context, set *Settings) error {
+	if err := s.repo.saveSettings(ctx, set); err != nil {
+		return err
+	}
+	s.invalidate(set.GuildID)
+	return nil
+}
+
 // SetEnabled toggles verification without touching the rest of the config.
 func (s *Service) SetEnabled(ctx context.Context, guildID string, enabled bool) error {
 	set, err := s.repo.getSettings(ctx, pid(guildID))

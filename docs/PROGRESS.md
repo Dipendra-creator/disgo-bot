@@ -31,7 +31,7 @@ casino features**.
 | **automod** module | ✅ Shipped |
 | **giveaways** module | ✅ Shipped |
 | **ai** assistant module | ✅ Shipped |
-| **web dashboard** (OAuth2 + per-guild config) | ✅ Shipped (leveling + logging wired) |
+| **web dashboard** (OAuth2 + per-guild config) | ✅ Shipped (all modules with settings wired) |
 | Deployment (Docker, compose, k8s, CI) | ✅ Authored |
 
 **Verification (this environment — no Docker / no live token):**
@@ -218,10 +218,14 @@ to `Module`/`Base`): `ConfigSchema() ConfigSchema` + `GetConfig`/`SetConfig`.
 (`bool`/`int` with Min/Max/`string` with MaxLen/`channel`/`role` as snowflake
 **strings** — JSON-safe against JS 2⁵³ precision loss). The web layer
 type-asserts each registered `Module` to `Configurable`; it never touches a
-module's tables. **leveling** (`config.go`: enabled, xp cooldown/min/max,
-announce + channel, stack roles) and **logging** (`config.go`: channel-per-
-category) are wired; each delegates to its existing service + cache invalidation
-(`SetConfig` copies the cached settings to avoid mutating the shared pointer).
+module's tables. **Every module with per-guild settings is wired** — leveling,
+logging, moderation, tickets, economy, verification, automod, and AI each ship a
+`config.go`; giveaways is intentionally skipped (it has no guild-level settings —
+config is per-giveaway). Each delegates to its existing service + cache
+invalidation (`SetConfig` copies the cached settings to avoid mutating the shared
+pointer). automod additionally enforces the delete/timeout action enum before
+persistence (unit-tested without a DB); tickets exposes only category/staff-role/
+log-channel (welcome message stays on `/ticket-setup` to avoid clobbering it).
 
 **Auth** — Discord OAuth2 (`identify guilds`) with **state + PKCE S256**
 (`golang.org/x/oauth2`, custom `Endpoint`). The token is used once at the
@@ -242,8 +246,8 @@ origin/referer **CSRF** check and a 64 KB body cap. Frontend is a minimal
 `//go:embed` vanilla-JS page (login → guild picker → schema-driven form → PATCH).
 
 Config: `WEB_ENABLED`, `WEB_PUBLIC_URL`, `DISCORD_CLIENT_SECRET` (never logged),
-`WEB_ADDR` (`:8081`), `WEB_COOKIE_SECURE`, `WEB_SESSION_HOURS` (168). Remaining
-modules are a mechanical fast-follow (one `config.go` each).
+`WEB_ADDR` (`:8081`), `WEB_COOKIE_SECURE`, `WEB_SESSION_HOURS` (168). All
+settings-bearing modules are now wired to the seam.
 
 ## Conventions worth knowing
 
@@ -264,8 +268,6 @@ modules are a mechanical fast-follow (one `config.go` each).
 
 Built incrementally on the same foundation, module by module:
 
-- Wire the remaining modules (moderation, tickets, economy, verification,
-  automod, giveaways, ai) to `shared.Configurable` — one `config.go` each.
 - Cross-cutting: Redis Streams workers, full RBAC engine, gateway sharding;
   dashboard follow-ups (audit log of changes, API rate-limiting, real SPA).
 

@@ -368,8 +368,9 @@ slash commands. It is **disabled by default** and started only when
 - **Config seam:** modules opt in by implementing `shared.Configurable`
   (`ConfigSchema` + `GetConfig`/`SetConfig`). The web layer discovers them by
   type-assertion and renders a form per `ConfigSchema` — it never touches a
-  module's tables. **leveling** and **logging** are wired today; the rest are a
-  mechanical fast-follow.
+  module's tables. Every module with per-guild settings is wired — leveling,
+  logging, moderation, tickets, economy, verification, automod, and AI;
+  giveaways has no guild-level settings, so it is intentionally not exposed.
 
 REST API (all under auth; guild routes re-check Manage Server):
 
@@ -408,9 +409,8 @@ The router, metrics, logging, DB and cache are provided automatically via `Deps`
 Built incrementally on this foundation. Shipped: utility, **moderation**,
 **tickets**, **logging**, **leveling**, **economy**, **verification**,
 **automod**, **giveaways**, **AI assistant**, and a **web dashboard**
-(Discord OAuth2 + per-guild module config; leveling + logging wired). Next:
-wire the remaining modules to `Configurable`, Redis Streams workers, full RBAC,
-and gateway sharding.
+(Discord OAuth2 + per-guild module config; every settings-bearing module wired).
+Next: Redis Streams workers, full RBAC, and gateway sharding.
 
 ## License
 

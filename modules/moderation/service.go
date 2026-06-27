@@ -236,6 +236,17 @@ func (s *Service) SetModLog(ctx context.Context, guildID, channelID int64) error
 	return s.repo.setModLogChannel(ctx, guildID, channelID)
 }
 
+// Settings returns a guild's moderation configuration (defaults when unset).
+func (s *Service) Settings(ctx context.Context, guildID string) (*Settings, error) {
+	return s.repo.getSettings(ctx, pid(guildID))
+}
+
+// SaveSettings upserts the guild's moderation configuration. Used by the web
+// dashboard's partial-patch path.
+func (s *Service) SaveSettings(ctx context.Context, set *Settings) error {
+	return s.repo.saveSettings(ctx, set)
+}
+
 // Purge bulk-deletes up to count recent messages in a channel, optionally
 // limited to a single author. Messages older than 14 days (which Discord
 // refuses to bulk-delete) are skipped. Returns the number deleted.

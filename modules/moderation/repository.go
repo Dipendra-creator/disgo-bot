@@ -130,6 +130,17 @@ func (r *repo) getSettings(ctx context.Context, guildID int64) (*Settings, error
 	return s, nil
 }
 
+// saveSettings upserts the full settings row (mod-log channel + DM toggle).
+func (r *repo) saveSettings(ctx context.Context, s *Settings) error {
+	_, err := r.db.NewInsert().Model(s).
+		On("CONFLICT (guild_id) DO UPDATE").
+		Set("mod_log_channel_id = EXCLUDED.mod_log_channel_id").
+		Set("dm_on_action = EXCLUDED.dm_on_action").
+		Set("updated_at = now()").
+		Exec(ctx)
+	return err
+}
+
 // setModLogChannel upserts the mod-log channel, preserving other settings.
 func (r *repo) setModLogChannel(ctx context.Context, guildID, channelID int64) error {
 	s := &Settings{GuildID: guildID, ModLogChannelID: channelID, DMOnAction: true}

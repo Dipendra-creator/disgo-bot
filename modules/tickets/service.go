@@ -55,6 +55,12 @@ func (s *Service) Settings(ctx context.Context, guildID string) (*Settings, erro
 	return s.repo.getSettings(ctx, pid(guildID))
 }
 
+// SaveSettings upserts the core config (category, staff role, log channel),
+// leaving panel references untouched. Used by the web dashboard's patch path.
+func (s *Service) SaveSettings(ctx context.Context, set *Settings) error {
+	return s.repo.saveSettings(ctx, set)
+}
+
 // TicketByChannel resolves the ticket a channel belongs to.
 func (s *Service) TicketByChannel(ctx context.Context, channelID string) (*Ticket, error) {
 	return s.repo.byChannel(ctx, pid(channelID))

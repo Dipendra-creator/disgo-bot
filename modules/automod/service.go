@@ -118,6 +118,16 @@ func (s *Service) mutate(ctx context.Context, guildID string, fn func(*Settings)
 	return nil
 }
 
+// SaveSettings persists a full settings row and invalidates the cache. Used by
+// the web dashboard's partial-patch path.
+func (s *Service) SaveSettings(ctx context.Context, set *Settings) error {
+	if err := s.repo.saveSettings(ctx, set); err != nil {
+		return err
+	}
+	s.invalidate(set.GuildID)
+	return nil
+}
+
 func (s *Service) SetLogChannel(ctx context.Context, guildID string, channelID int64) error {
 	return s.mutate(ctx, guildID, func(set *Settings) { set.LogChannelID = channelID })
 }
