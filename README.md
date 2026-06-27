@@ -110,6 +110,34 @@ render with a progress bar.
 Reward roles can **stack** (keep every earned role) or keep only the highest.
 XP gain needs only `GuildMessages` — no privileged intents.
 
+### Economy
+
+A per-guild virtual currency — **non-gambling by design** (no betting, slots or
+chance mechanics). Members earn from `/daily` and `/work`, hold funds in a wallet
+and a bank, transfer to each other, and spend in a configurable shop that can
+grant roles on purchase.
+
+| Command | Permission | Purpose |
+| --- | --- | --- |
+| `/balance [user]` | — | Wallet, bank and net worth |
+| `/daily` | — | Claim the once-per-day reward |
+| `/work` | — | Earn a randomised reward on a cooldown |
+| `/pay <user> <amount>` | — | Send currency from your wallet |
+| `/deposit <amount>` | — | Move wallet → bank |
+| `/withdraw <amount>` | — | Move bank → wallet |
+| `/shop` | — | Browse the paginated shop |
+| `/buy <item>` | — | Purchase an item (grants its role, if any) |
+| `/inventory [user]` | — | List owned items |
+| `/rich` | — | Paginated net-worth leaderboard |
+| `/eco-config <sub>` | Manage Server | currency, daily, work, starting balance |
+| `/eco-admin <sub>` | Manage Server | give/set/reset balances, shop-add/shop-remove |
+
+All money operations are **atomic and guarded** — transfers, deposits, withdrawals
+and purchases use `UPDATE … WHERE balance >= amount RETURNING` (and stock-guarded
+`RETURNING` for limited items) so concurrent commands can't overspend or oversell.
+Periodic earnings are gated by stamped cooldown columns checked in the same
+atomic update.
+
 ## Architecture
 
 Clean Architecture with an interface-driven module plugin system. Each feature
@@ -155,7 +183,12 @@ internal/
   router/        interaction registry + dispatcher + command sync
   ui/            embeds, buttons, Components v2 builders, paginator, states, theme
 modules/
-  utility/       sample module (ping/serverinfo/userinfo/avatar)
+  utility/       ping/serverinfo/userinfo/avatar
+  moderation/    cases, ban/kick/timeout/warn/purge, mod-log
+  tickets/       panel, private channels, claim/close, transcripts
+  logging/       gateway event mirror (message/member/server)
+  leveling/      XP, ranks, reward roles, leaderboard
+  economy/       non-gambling currency, wallet/bank, shop, inventory
 shared/          Module interface, Deps, Command, Context, permissions, errors, customid
 pkg/             exported helpers (snowflake, humanize)
 database/        //go:embed migrations
@@ -239,7 +272,7 @@ The router, metrics, logging, DB and cache are provided automatically via `Deps`
 ## Roadmap
 
 Built incrementally on this foundation. Shipped: utility, **moderation**,
-**tickets**, **logging**, **leveling**. Next: economy, verification, automod,
+**tickets**, **logging**, **leveling**, **economy**. Next: verification, automod,
 giveaways, AI assistant, plus Redis Streams workers, full RBAC, gateway
 sharding, and a REST/web dashboard with OAuth2.
 

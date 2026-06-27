@@ -1,6 +1,6 @@
 # disgo-bot — Progress
 
-_Last updated: 2026-06-26_
+_Last updated: 2026-06-27_
 
 A production-grade, modular, multipurpose Discord bot in Go, built foundation-first
 on Clean Architecture with a plugin-style module system and modern Discord-native
@@ -26,6 +26,7 @@ casino features**.
 | **tickets** module | ✅ Shipped |
 | **logging** module | ✅ Shipped |
 | **leveling** module | ✅ Shipped |
+| **economy** module (non-gambling) | ✅ Shipped |
 | Deployment (Docker, compose, k8s, CI) | ✅ Authored |
 
 **Verification (this environment — no Docker / no live token):**
@@ -104,6 +105,26 @@ Commands: `/rank`, `/leaderboard` (paginated), `/level-config`, `/level-role`,
 `/xp` (admin). Atomic XP increment via `INSERT … ON CONFLICT … RETURNING`;
 settings cached in-process and invalidated on change.
 
+### economy (`modules/economy`, migration `0006_economy.sql`)
+
+Per-guild virtual currency — **non-gambling by design** (no betting, slots or
+chance mechanics). Members earn from `/daily` (fixed 24h cooldown) and `/work`
+(randomised reward, configurable cooldown), hold funds in a **wallet** and a
+**bank**, transfer to each other, and spend in a per-guild **shop** that can grant
+a role on purchase. Items support limited or unlimited stock and an inventory.
+
+Commands: `/balance`, `/daily`, `/work`, `/pay`, `/deposit`, `/withdraw`,
+`/shop` (paginated), `/buy`, `/inventory`, `/rich` (paginated leaderboard),
+`/eco-config` (currency/daily/work/starting — Manage Server), `/eco-admin`
+(give/set/reset balances, shop-add/shop-remove — Manage Server).
+
+Every money mutation is **atomic and race-safe**: transfers, deposits, withdrawals
+and purchases run `UPDATE … WHERE balance >= amount RETURNING` (→ `ErrInsufficient`
+on a no-row), limited stock decrements via a guarded `RETURNING` (→ `ErrOutOfStock`),
+and buys run inside `RunInTx`. Periodic earnings stamp `last_daily`/`last_work` in
+the same guarded update (cutoff check), so a member on cooldown causes no write.
+Settings cached in-process and invalidated on change.
+
 ## Conventions worth knowing
 
 - **Custom-ID routing:** `module:action:arg1:arg2`, encoded/decoded by
@@ -123,7 +144,7 @@ settings cached in-process and invalidated on change.
 
 Built incrementally on the same foundation, module by module:
 
-- leveling, economy (non-gambling), verification, automod, giveaways, AI assistant.
+- verification, automod, giveaways, AI assistant.
 - Cross-cutting: Redis Streams workers, full RBAC engine, gateway sharding,
   REST/web dashboard + OAuth2.
 
