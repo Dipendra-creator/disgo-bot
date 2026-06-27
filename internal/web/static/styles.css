@@ -204,6 +204,26 @@ select.input { appearance: none; cursor: pointer;
 #toast.err { border-color: var(--error); }
 #toast.err .dot { background: var(--error); }
 
+/* --- moderation console --- */
+.toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.dur { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; white-space: nowrap; }
+.edit-row { display: flex; align-items: center; gap: 8px; }
+.pager { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 16px; font-size: 13px; color: var(--text-2); }
+
+/* Action badges — tinted by severity, hairline borders over fills. */
+.act-warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, transparent); background: color-mix(in srgb, var(--warn) 12%, transparent); }
+.act-timeout { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); background: var(--accent-soft); }
+.act-kick { color: color-mix(in srgb, var(--warn) 55%, var(--error)); border-color: color-mix(in srgb, var(--error) 30%, transparent); background: color-mix(in srgb, var(--error) 9%, transparent); }
+.act-ban { color: var(--error); border-color: color-mix(in srgb, var(--error) 38%, transparent); background: color-mix(in srgb, var(--error) 12%, transparent); }
+.act-unban, .act-untimeout { color: var(--success); border-color: color-mix(in srgb, var(--success) 35%, transparent); background: color-mix(in srgb, var(--success) 12%, transparent); }
+
+/* Confirmation modal */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(2px); display: flex; align-items: center; justify-content: center; z-index: 60; padding: 20px; }
+.modal { width: 100%; max-width: 400px; background: var(--surface); border: 1px solid var(--border-2); border-radius: var(--r-lg); padding: 24px; box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5); }
+.modal h3 { font-size: 16px; margin-bottom: 8px; }
+.modal p { font-size: 13.5px; line-height: 1.5; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
+
 @media (max-width: 720px) {
   :root { --sb-w: 0px; }
   #sidebar { display: none; }

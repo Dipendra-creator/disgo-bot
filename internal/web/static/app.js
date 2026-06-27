@@ -121,6 +121,8 @@ const state = {
   roles: [], // [{id,name,color,position,managed,hoist,everyone}]
   channels: [], // [{id,name,type,parent_id,position}]
   cacheKey: null, // guild whose roles/channels are loaded
+  features: {}, // management consoles available for the current guild
+  mod: { target: "", action: "", offset: 0 }, // moderation console filter/pager state
 };
 
 const TEXT_CHANNEL_TYPES = new Set([0, 5, 15]); // text, announcement, forum
@@ -412,6 +414,195 @@ async function pageAudit(root) {
     recentChanges(rows));
 }
 
+/* ------------------------------------------------ moderation console (Inc2) */
+
+const ACTION_LABEL = {
+  ban: "Ban", unban: "Unban", kick: "Kick",
+  timeout: "Timeout", untimeout: "Untimeout", warn: "Warn",
+};
+
+function actionBadge(a) {
+  return el("span", { class: "badge act-" + a }, ACTION_LABEL[a] || a);
+}
+
+// confirmDialog shows a modal and resolves true/false. Used to gate destructive
+// actions (ban/kick) behind an explicit confirmation.
+function confirmDialog(title, message, danger) {
+  return new Promise((resolve) => {
+    const close = (v) => { overlay.remove(); resolve(v); };
+    const overlay = el("div", { class: "modal-overlay" },
+      el("div", { class: "modal" },
+        el("h3", {}, title),
+        el("p", { class: "muted" }, message),
+        el("div", { class: "modal-actions" },
+          el("button", { class: "btn", onClick: () => close(false) }, "Cancel"),
+          el("button", { class: "btn " + (danger ? "btn-danger" : "btn-primary"), onClick: () => close(true) }, "Confirm"))));
+    overlay.onclick = (e) => { if (e.target === overlay) close(false); };
+    document.body.appendChild(overlay);
+  });
+}
+
+function actionFormCard(id) {
+  const action = el("select", { class: "input", style: "max-width:150px" },
+    el("option", { value: "warn" }, "Warn"),
+    el("option", { value: "timeout" }, "Timeout"),
+    el("option", { value: "kick" }, "Kick"),
+    el("option", { value: "ban" }, "Ban"));
+  const target = el("input", { class: "input", type: "text", placeholder: "User ID", style: "max-width:190px" });
+  const dur = el("input", { class: "input", type: "number", min: "1", value: "10", style: "max-width:90px" });
+  const durRow = el("label", { class: "dur hidden" }, el("span", { class: "muted" }, "Minutes"), dur);
+  const reason = el("input", { class: "input", type: "text", placeholder: "Reason (optional)", style: "flex:1;min-width:180px" });
+  action.onchange = () => durRow.classList.toggle("hidden", action.value !== "timeout");
+
+  const submit = el("button", { class: "btn btn-primary" }, "Apply");
+  submit.onclick = async () => {
+    const act = action.value;
+    const tid = target.value.trim();
+    if (!tid) { toast("Target user ID is required", true); return; }
+    if (act === "ban" || act === "kick") {
+      const ok = await confirmDialog(
+        `${ACTION_LABEL[act]} user?`,
+        `This ${act}s ${tid} on Discord immediately and records a case.`, true);
+      if (!ok) return;
+    }
+    const body = { action: act, target_id: tid, reason: reason.value.trim() };
+    if (act === "timeout") body.duration_ms = Math.max(1, Number(dur.value)) * 60000;
+    submit.disabled = true;
+    try {
+      const c = await api("POST", `/api/guilds/${id}/moderation/actions`, body);
+      toast(`Case #${c.number} · ${ACTION_LABEL[c.action] || c.action}`);
+      target.value = ""; reason.value = "";
+      state.mod.offset = 0;
+      router();
+    } catch (e) {
+      toast(e.message, true);
+    } finally {
+      submit.disabled = false;
+    }
+  };
+
+  return el("div", { class: "card" },
+    el("div", { class: "card-head" },
+      el("h2", {}, "Take action"),
+      el("div", { class: "sub" }, "Applies immediately and is recorded as a case.")),
+    el("div", { class: "toolbar", style: "margin-top:16px" }, action, target, durRow, reason, submit));
+}
+
+async function editReason(id, c, cell, btn) {
+  const input = el("input", { class: "input", type: "text", style: "min-width:200px" });
+  input.value = c.reason || "";
+  const restore = () => {
+    cell.replaceChildren(c.reason || el("span", { class: "muted" }, "—"));
+    btn.disabled = false;
+  };
+  const save = el("button", { class: "btn btn-sm btn-primary" }, "Save");
+  const cancel = el("button", { class: "btn btn-sm btn-ghost" }, "Cancel");
+  cancel.onclick = restore;
+  save.onclick = async () => {
+    const v = input.value.trim();
+    if (!v) { toast("Reason can't be empty", true); return; }
+    save.disabled = true;
+    try {
+      const updated = await api("PATCH", `/api/guilds/${id}/moderation/cases/${c.number}`, { reason: v });
+      c.reason = updated.reason;
+      toast(`Case #${c.number} updated`);
+      restore();
+    } catch (e) {
+      toast(e.message, true);
+      save.disabled = false;
+    }
+  };
+  btn.disabled = true;
+  cell.replaceChildren(el("div", { class: "edit-row" }, input, save, cancel));
+  input.focus();
+}
+
+function caseRow(id, c) {
+  const when = new Date(c.created_at);
+  const reasonCell = el("td", {}, c.reason || el("span", { class: "muted" }, "—"));
+  const edit = el("button", { class: "btn btn-ghost btn-sm", title: "Edit reason" }, icon("settings"));
+  edit.onclick = () => editReason(id, c, reasonCell, edit);
+  return el("tr", {},
+    el("td", {}, el("span", { class: "chip" }, "#" + c.number)),
+    el("td", {}, actionBadge(c.action)),
+    el("td", {}, el("span", { class: "chip" }, c.target_id)),
+    el("td", {}, c.moderator_id ? el("span", { class: "chip" }, c.moderator_id) : el("span", { class: "muted" }, "system")),
+    reasonCell,
+    el("td", { class: "muted" }, isNaN(when) ? "—" : when.toLocaleDateString()),
+    el("td", { style: "text-align:right" }, edit));
+}
+
+async function renderCases(card, id, limit) {
+  card.replaceChildren(spinner());
+
+  const fTarget = el("input", { class: "input", type: "text", placeholder: "Filter by user ID", style: "max-width:190px" });
+  fTarget.value = state.mod.target;
+  const fAction = el("select", { class: "input", style: "max-width:150px" },
+    el("option", { value: "" }, "All actions"),
+    ...Object.keys(ACTION_LABEL).map((a) => el("option", { value: a }, ACTION_LABEL[a])));
+  fAction.value = state.mod.action;
+  const apply = el("button", { class: "btn" }, "Filter");
+  apply.onclick = () => {
+    state.mod.target = fTarget.value.trim();
+    state.mod.action = fAction.value;
+    state.mod.offset = 0;
+    renderCases(card, id, limit);
+  };
+  fTarget.onkeydown = (e) => { if (e.key === "Enter") apply.onclick(); };
+
+  let page;
+  try {
+    const qs = new URLSearchParams({ limit: String(limit), offset: String(state.mod.offset) });
+    if (state.mod.target) qs.set("target", state.mod.target);
+    if (state.mod.action) qs.set("action", state.mod.action);
+    page = await api("GET", `/api/guilds/${id}/moderation/cases?${qs}`);
+  } catch (e) {
+    card.replaceChildren(emptyState("shield", "Couldn't load cases", e.message));
+    return;
+  }
+
+  card.replaceChildren(
+    el("div", { class: "card-head" },
+      el("h2", {}, "Cases"),
+      el("div", { class: "sub" }, `${page.total} total`)),
+    el("div", { class: "toolbar", style: "margin-top:16px" }, fTarget, fAction, apply));
+
+  if (!page.cases.length) {
+    card.appendChild(emptyState("scroll", "No cases", "Nothing matches these filters yet."));
+    return;
+  }
+
+  const body = el("tbody");
+  for (const c of page.cases) body.appendChild(caseRow(id, c));
+  card.appendChild(el("div", { class: "table-wrap" },
+    el("table", { class: "table" },
+      el("thead", {}, el("tr", {},
+        el("th", {}, "#"), el("th", {}, "Action"), el("th", {}, "Target"),
+        el("th", {}, "Moderator"), el("th", {}, "Reason"), el("th", {}, "When"), el("th", {}, ""))),
+      body)));
+
+  const start = state.mod.offset;
+  const end = state.mod.offset + page.cases.length;
+  const prev = el("button", { class: "btn btn-sm" }, "Prev");
+  prev.disabled = start === 0;
+  prev.onclick = () => { state.mod.offset = Math.max(0, start - limit); renderCases(card, id, limit); };
+  const next = el("button", { class: "btn btn-sm" }, "Next");
+  next.disabled = end >= page.total;
+  next.onclick = () => { state.mod.offset = start + limit; renderCases(card, id, limit); };
+  card.appendChild(el("div", { class: "pager" },
+    el("span", { class: "muted" }, `${start + 1}–${end} of ${page.total}`), prev, next));
+}
+
+async function pageModeration(root) {
+  const id = state.guildID;
+  root.replaceChildren(
+    pageHead("Moderation", "Browse cases and take manual action", "shield"),
+    actionFormCard(id));
+  const listCard = el("div", { class: "card" });
+  root.appendChild(listCard);
+  await renderCases(listCard, id, 25);
+}
+
 /* ------------------------------------------------------------------ router */
 
 const ROUTES = {
@@ -423,6 +614,7 @@ function currentRoute() {
   const h = (location.hash || "#/overview").replace(/^#\/?/, "");
   const parts = h.split("/").filter(Boolean);
   if (parts[0] === "m" && parts[1]) return { kind: "module", name: parts[1] };
+  if (parts[0] === "moderation") return { kind: "moderation" };
   if (parts[0] === "audit") return { kind: "audit" };
   return { kind: "overview" };
 }
@@ -434,6 +626,7 @@ async function router() {
   root.replaceChildren();
   markActiveNav(route);
   if (route.kind === "module") return pageModule(root, route.name);
+  if (route.kind === "moderation") return pageModeration(root);
   if (route.kind === "audit") return pageAudit(root);
   return pageOverview(root);
 }
@@ -444,6 +637,7 @@ function markActiveNav(route) {
     const active =
       (route.kind === "overview" && r === "overview") ||
       (route.kind === "audit" && r === "audit") ||
+      (route.kind === "moderation" && r === "moderation") ||
       (route.kind === "module" && r === `m/${route.name}`);
     a.classList.toggle("active", active);
   }
@@ -455,9 +649,21 @@ function navLink(route, label, ic) {
   return el("a", { dataset: { route }, href: `#/${route}` }, icon(ic), el("span", {}, label));
 }
 
+// CONSOLES are the management dashboards. Each shows only when its matching
+// feature flag is true, so a console never appears without a backend seam.
+const CONSOLES = [
+  { key: "moderation", route: "moderation", label: "Moderation", icon: "shield" },
+];
+
 async function buildNav() {
   const nav = $("#nav");
   nav.replaceChildren(navLink("overview", "Overview", "home"));
+
+  const active = CONSOLES.filter((c) => state.features[c.key]);
+  if (active.length) {
+    nav.appendChild(el("div", { class: "nav-label" }, "Management"));
+    for (const c of active) nav.appendChild(navLink(c.route, c.label, c.icon));
+  }
 
   let mods = [];
   try {
@@ -555,6 +761,12 @@ function renderFooter() {
 async function selectGuild(id) {
   state.guildID = id;
   state.cacheKey = null;
+  state.mod = { target: "", action: "", offset: 0 };
+  try {
+    state.features = await api("GET", `/api/guilds/${id}/features`);
+  } catch {
+    state.features = {};
+  }
   renderPicker();
   renderFooter();
   await buildNav();

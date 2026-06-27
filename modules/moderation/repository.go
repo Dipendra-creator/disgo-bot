@@ -69,6 +69,25 @@ func (r *repo) listByTarget(ctx context.Context, guildID, targetID int64, action
 	return cs, nil
 }
 
+// listCases returns a page of a guild's cases, newest first, optionally filtered
+// by target and/or action, along with the total match count (ignoring the page
+// window) so callers can paginate.
+func (r *repo) listCases(ctx context.Context, guildID, targetID int64, action string, limit, offset int) ([]Case, int, error) {
+	var cs []Case
+	q := r.db.NewSelect().Model(&cs).Where("guild_id = ?", guildID)
+	if targetID != 0 {
+		q = q.Where("target_id = ?", targetID)
+	}
+	if action != "" {
+		q = q.Where("action = ?", action)
+	}
+	total, err := q.Order("case_number DESC").Limit(limit).Offset(offset).ScanAndCount(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	return cs, total, nil
+}
+
 // updateReason rewrites a case's reason, returning ErrCaseNotFound if absent.
 func (r *repo) updateReason(ctx context.Context, guildID, number int64, reason string) error {
 	res, err := r.db.NewUpdate().Model((*Case)(nil)).

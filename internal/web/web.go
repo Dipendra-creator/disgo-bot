@@ -36,6 +36,8 @@ type Server struct {
 	mods  map[string]shared.Configurable // configurable modules by name
 	order []string                       // module names in registration order
 
+	moderation shared.Moderation // moderation console seam, if a module exposes it
+
 	http *http.Server
 }
 
@@ -78,6 +80,9 @@ func New(deps *shared.Deps, modules []shared.Module) (*Server, error) {
 			s.mods[m.Name()] = c
 			s.order = append(s.order, m.Name())
 		}
+		if mod, ok := m.(shared.Moderation); ok {
+			s.moderation = mod
+		}
 	}
 	s.http = &http.Server{
 		Addr:              cfg.Addr,
@@ -104,6 +109,14 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/guilds/{id}/modules/{mod}", s.requireAuth(s.requireGuildManage(s.handleModuleGet)))
 	mux.HandleFunc("PATCH /api/guilds/{id}/modules/{mod}", s.requireAuth(s.requireGuildManage(s.handleModulePatch)))
 	mux.HandleFunc("GET /api/guilds/{id}/audit", s.requireAuth(s.requireGuildManage(s.handleAudit)))
+
+	// Moderation console.
+	mux.HandleFunc("GET /api/guilds/{id}/moderation/cases", s.requireAuth(s.requireGuildManage(s.handleModCases)))
+	mux.HandleFunc("PATCH /api/guilds/{id}/moderation/cases/{num}", s.requireAuth(s.requireGuildManage(s.handleModCaseReason)))
+	mux.HandleFunc("POST /api/guilds/{id}/moderation/actions", s.requireAuth(s.requireGuildManage(s.handleModAction)))
+
+	// Feature discovery — which management consoles the dashboard should show.
+	mux.HandleFunc("GET /api/guilds/{id}/features", s.requireAuth(s.requireGuildManage(s.handleFeatures)))
 
 	// Static dashboard at "/".
 	sub, _ := fs.Sub(staticFS, "static")

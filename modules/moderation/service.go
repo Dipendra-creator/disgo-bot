@@ -204,6 +204,12 @@ func (s *Service) GetCase(ctx context.Context, guildID, number int64) (*Case, er
 	return s.repo.getCase(ctx, guildID, number)
 }
 
+// ListCases returns a page of a guild's cases (newest first) plus the total
+// match count, for the dashboard case browser.
+func (s *Service) ListCases(ctx context.Context, guildID, targetID int64, action string, limit, offset int) ([]Case, int, error) {
+	return s.repo.listCases(ctx, guildID, targetID, action, limit, offset)
+}
+
 // EditReason rewrites a case's reason and returns the updated case.
 func (s *Service) EditReason(ctx context.Context, guildID, number int64, reason string) (*Case, error) {
 	if err := s.repo.updateReason(ctx, guildID, number, reason); err != nil {
