@@ -14,6 +14,7 @@ require (
 	github.com/uptrace/bun/driver/pgdriver v1.2.18
 	github.com/uptrace/bun/extra/bundebug v1.2.18
 	go.uber.org/zap v1.28.0
+	golang.org/x/oauth2 v0.36.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 

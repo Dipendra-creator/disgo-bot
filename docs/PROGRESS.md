@@ -31,6 +31,7 @@ casino features**.
 | **automod** module | ✅ Shipped |
 | **giveaways** module | ✅ Shipped |
 | **ai** assistant module | ✅ Shipped |
+| **web dashboard** (OAuth2 + per-guild config) | ✅ Shipped (leveling + logging wired) |
 | Deployment (Docker, compose, k8s, CI) | ✅ Authored |
 
 **Verification (this environment — no Docker / no live token):**
@@ -203,6 +204,47 @@ privileged `MessageContent` intent.
 
 Configured via `/ask` (public) and `/ai channel|system|status` (Manage Server).
 
+### web dashboard (`internal/web`, `shared/configurable.go` — no migration)
+
+Optional browser dashboard so admins configure modules without slash commands.
+**Disabled by default**; started from `cmd/bot` only when `cfg.Web.Enabled` and
+`cfg.Web.Ready()` (mirrors `observability.Start` — goroutine `ListenAndServe`,
+graceful `Shutdown`). A misconfiguration logs a warning and skips the dashboard;
+it never blocks the gateway.
+
+**Config seam** — `shared.Configurable` (additive optional interface; no change
+to `Module`/`Base`): `ConfigSchema() ConfigSchema` + `GetConfig`/`SetConfig`.
+`ConfigSchema.Normalize` validates+coerces a partial patch by field type
+(`bool`/`int` with Min/Max/`string` with MaxLen/`channel`/`role` as snowflake
+**strings** — JSON-safe against JS 2⁵³ precision loss). The web layer
+type-asserts each registered `Module` to `Configurable`; it never touches a
+module's tables. **leveling** (`config.go`: enabled, xp cooldown/min/max,
+announce + channel, stack roles) and **logging** (`config.go`: channel-per-
+category) are wired; each delegates to its existing service + cache invalidation
+(`SetConfig` copies the cached settings to avoid mutating the shared pointer).
+
+**Auth** — Discord OAuth2 (`identify guilds`) with **state + PKCE S256**
+(`golang.org/x/oauth2`, custom `Endpoint`). The token is used once at the
+callback to read `/users/@me` + `/users/@me/guilds`, then discarded — never
+persisted or returned to the browser. The manageable-guild list (Manage Server
+`0x20` **and** bot present, cross-checked via `session.State.Guild`) is captured
+into the session at login.
+
+**Sessions** — opaque 256-bit token (`crypto/rand`) → JSON in the shared cache
+under `web:sess:<token>` with TTL; httpOnly, `SameSite=Lax`, `Secure`
+(configurable) cookie; logout destroys the server record.
+
+**API** (stdlib Go 1.22+ method+wildcard mux): `GET /api/me`,
+`GET /api/guilds/{id}/modules`, `GET …/{mod}`, `PATCH …/{mod}`. Every guild
+route re-checks Manage Server **server-side** (`requireGuildManage`) — the
+client's guild list is never trusted for writes; mutations also require an
+origin/referer **CSRF** check and a 64 KB body cap. Frontend is a minimal
+`//go:embed` vanilla-JS page (login → guild picker → schema-driven form → PATCH).
+
+Config: `WEB_ENABLED`, `WEB_PUBLIC_URL`, `DISCORD_CLIENT_SECRET` (never logged),
+`WEB_ADDR` (`:8081`), `WEB_COOKIE_SECURE`, `WEB_SESSION_HOURS` (168). Remaining
+modules are a mechanical fast-follow (one `config.go` each).
+
 ## Conventions worth knowing
 
 - **Custom-ID routing:** `module:action:arg1:arg2`, encoded/decoded by
@@ -222,12 +264,15 @@ Configured via `/ask` (public) and `/ai channel|system|status` (Manage Server).
 
 Built incrementally on the same foundation, module by module:
 
-- Cross-cutting: Redis Streams workers, full RBAC engine, gateway sharding,
-  REST/web dashboard + OAuth2.
+- Wire the remaining modules (moderation, tickets, economy, verification,
+  automod, giveaways, ai) to `shared.Configurable` — one `config.go` each.
+- Cross-cutting: Redis Streams workers, full RBAC engine, gateway sharding;
+  dashboard follow-ups (audit log of changes, API rate-limiting, real SPA).
 
-All originally-scoped feature modules are shipped. Modules were built in sequence
-(logging → leveling → economy → verification → automod → giveaways → AI), each
-verified and committed independently.
+All originally-scoped feature modules are shipped, plus the web-dashboard
+foundation. Modules were built in sequence (logging → leveling → economy →
+verification → automod → giveaways → AI), then the cross-cutting web dashboard,
+each verified and committed independently.
 
 ## How to verify locally
 

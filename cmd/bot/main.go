@@ -20,6 +20,7 @@ import (
 	"github.com/dipu-sharma/disgo-bot/internal/logger"
 	"github.com/dipu-sharma/disgo-bot/internal/observability"
 	"github.com/dipu-sharma/disgo-bot/internal/router"
+	"github.com/dipu-sharma/disgo-bot/internal/web"
 	"github.com/dipu-sharma/disgo-bot/modules/ai"
 	"github.com/dipu-sharma/disgo-bot/modules/automod"
 	"github.com/dipu-sharma/disgo-bot/modules/economy"
@@ -125,6 +126,21 @@ func run() error {
 	// Observability HTTP servers (metrics + health); /readyz reflects the bot.
 	servers := observability.Start(cfg, metrics, b.Ready, log)
 
+	// Optional web dashboard (Discord OAuth2 + per-guild module config). A
+	// misconfiguration disables the dashboard but never blocks the gateway.
+	var dashboard *web.Server
+	if cfg.Web.Enabled {
+		if !cfg.Web.Ready() {
+			log.Warn("web dashboard enabled but misconfigured; skipping " +
+				"(need DISCORD_CLIENT_SECRET and WEB_PUBLIC_URL)")
+		} else if dash, derr := web.New(deps, modules); derr != nil {
+			log.Warn("web dashboard init failed; skipping", zap.Error(derr))
+		} else {
+			dashboard = dash
+			dashboard.Start()
+		}
+	}
+
 	if err := b.Open(); err != nil {
 		return err
 	}
@@ -139,6 +155,9 @@ func run() error {
 	defer cancel()
 	if err := b.Close(); err != nil {
 		log.Warn("gateway close", zap.Error(err))
+	}
+	if dashboard != nil {
+		dashboard.Shutdown(shutdownCtx)
 	}
 	servers.Shutdown(shutdownCtx)
 	return nil

@@ -61,3 +61,17 @@ metrics:
 http:
   # Health/readiness probe server (/healthz, /readyz).
   health_addr: ":8080"
+
+web:
+  # Optional browser dashboard with Discord OAuth2 login. Disabled by default.
+  enabled: false
+  addr: ":8081"
+  # Public base URL the dashboard is reached at; used to build the OAuth
+  # redirect ${public_url}/auth/callback (also register it in the portal).
+  public_url: ""
+  # OAuth2 client secret. Prefer the DISCORD_CLIENT_SECRET env var.
+  client_secret: ""
+  # Session lifetime in hours (default 168 = 7 days).
+  session_hours: 168
+  # Set true when served over HTTPS so the session cookie carries Secure.
+  cookie_secure: false

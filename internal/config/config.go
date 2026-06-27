@@ -31,6 +31,7 @@ type Config struct {
 	Metrics  MetricsConfig  `yaml:"metrics"`
 	HTTP     HTTPConfig     `yaml:"http"`
 	AI       AIConfig       `yaml:"ai"`
+	Web      WebConfig      `yaml:"web"`
 }
 
 // DiscordConfig holds gateway credentials and command-registration settings.
@@ -134,6 +135,33 @@ type AIConfig struct {
 // Ready reports whether the assistant can actually serve requests.
 func (a AIConfig) Ready() bool { return a.Enabled && a.APIKey != "" }
 
+// WebConfig configures the optional web dashboard (Discord OAuth2 login + a REST
+// API for per-guild module configuration). The OAuth client ID is the Discord
+// application ID (Discord.AppID); only the client secret and a public base URL
+// are configured here. When disabled the dashboard server is never started.
+type WebConfig struct {
+	Enabled bool `yaml:"enabled"`
+	// Addr is the listen address, e.g. ":8081".
+	Addr string `yaml:"addr"`
+	// PublicURL is the externally-reachable base URL the OAuth redirect is built
+	// from (e.g. "https://dash.example.com"). Must match a redirect URI
+	// registered in the Discord developer portal.
+	PublicURL string `yaml:"public_url"`
+	// ClientSecret is the Discord OAuth2 client secret. Provide via
+	// DISCORD_CLIENT_SECRET; never commit it.
+	ClientSecret string `yaml:"client_secret"`
+	// SessionHours is how long a login session stays valid.
+	SessionHours int `yaml:"session_hours" validate:"gte=0"`
+	// CookieSecure marks the session cookie Secure (HTTPS-only). Enable in prod.
+	CookieSecure bool `yaml:"cookie_secure"`
+}
+
+// Ready reports whether the dashboard has everything it needs to serve OAuth.
+// The client ID comes from Discord.AppID, checked separately in main.
+func (w WebConfig) Ready() bool {
+	return w.Enabled && w.ClientSecret != "" && w.PublicURL != ""
+}
+
 // Default returns a Config populated with sensible development defaults.
 // Secrets (token, passwords) are intentionally left empty.
 func Default() Config {
@@ -171,6 +199,12 @@ func Default() Config {
 			Model:     "claude-opus-4-8",
 			MaxTokens: 1024,
 			BaseURL:   "https://api.anthropic.com",
+		},
+		Web: WebConfig{
+			Enabled:      false,
+			Addr:         ":8081",
+			SessionHours: 168, // 7 days
+			CookieSecure: false,
 		},
 	}
 }
@@ -244,6 +278,13 @@ func applyEnv(cfg *Config) {
 	setStr(&cfg.AI.Model, "AI_MODEL")
 	setInt(&cfg.AI.MaxTokens, "AI_MAX_TOKENS")
 	setStr(&cfg.AI.BaseURL, "AI_BASE_URL")
+
+	setBool(&cfg.Web.Enabled, "WEB_ENABLED")
+	setStr(&cfg.Web.Addr, "WEB_ADDR")
+	setStr(&cfg.Web.PublicURL, "WEB_PUBLIC_URL")
+	setStr(&cfg.Web.ClientSecret, "DISCORD_CLIENT_SECRET")
+	setInt(&cfg.Web.SessionHours, "WEB_SESSION_HOURS")
+	setBool(&cfg.Web.CookieSecure, "WEB_COOKIE_SECURE")
 }
 
 func setStr(dst *string, env string) {

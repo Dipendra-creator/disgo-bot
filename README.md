@@ -263,6 +263,7 @@ internal/
   cache/         Cache interface, redis impl, in-memory fallback
   bot/           session lifecycle, intents, dispatch wiring
   router/        interaction registry + dispatcher + command sync
+  web/           optional dashboard: Discord OAuth2, sessions, per-guild config API
   ui/            embeds, buttons, Components v2 builders, paginator, states, theme
 modules/
   utility/       ping/serverinfo/userinfo/avatar
@@ -275,7 +276,7 @@ modules/
   automod/       content filters: words, invites, mentions, spam
   giveaways/     timed prize draws: entry button, sweeper, reroll
   ai/            opt-in Claude assistant: /ask + assistant channel, provider iface
-shared/          Module interface, Deps, Command, Context, permissions, errors, customid
+shared/          Module interface, Deps, Command, Context, permissions, errors, customid, Configurable
 pkg/             exported helpers (snowflake, humanize)
 database/        //go:embed migrations
 deployments/     Dockerfile, docker-compose, k8s manifests
@@ -307,8 +308,10 @@ cp .env.example .env
 
 Key env vars: `DISCORD_TOKEN`, `DISCORD_APP_ID`, `DISCORD_DEV_GUILD_ID`
 (guild-scoped commands register instantly in dev), `DATABASE_URL`,
-`REDIS_ENABLED`/`REDIS_ADDR`, `LOG_LEVEL`/`LOG_FORMAT`. Full list in
-`.env.example`.
+`REDIS_ENABLED`/`REDIS_ADDR`, `LOG_LEVEL`/`LOG_FORMAT`. Optional web dashboard:
+`WEB_ENABLED`, `WEB_PUBLIC_URL`, `DISCORD_CLIENT_SECRET`, `WEB_ADDR`,
+`WEB_COOKIE_SECURE`, `WEB_SESSION_HOURS` (see [Web Dashboard](#web-dashboard)).
+Full list in `.env.example`.
 
 ## Run
 
@@ -345,6 +348,51 @@ make help    # list all targets
   interaction totals
 - Errors: optional Sentry (`SENTRY_ENABLED=true` + `SENTRY_DSN`)
 
+## Web Dashboard
+
+An **optional** browser dashboard lets server admins configure modules without
+slash commands. It is **disabled by default** and started only when
+`WEB_ENABLED=true` and the OAuth credentials are present.
+
+- **Login:** Discord OAuth2 (`identify guilds` scopes) with **state + PKCE
+  (S256)**. The OAuth token is used once at the callback to read the user's
+  profile and guild list, then **discarded** — never persisted or sent to the
+  browser.
+- **Sessions:** an opaque 256-bit token in an httpOnly, `SameSite=Lax`,
+  `Secure` (configurable) cookie; the server record lives in the shared cache
+  with a TTL and is destroyed on logout.
+- **Authorization:** every guild route re-checks server-side that the user has
+  **Manage Server** on that guild **and** the bot is present — the client's
+  guild list is never trusted for writes. Mutations also require an
+  origin/referer CSRF check.
+- **Config seam:** modules opt in by implementing `shared.Configurable`
+  (`ConfigSchema` + `GetConfig`/`SetConfig`). The web layer discovers them by
+  type-assertion and renders a form per `ConfigSchema` — it never touches a
+  module's tables. **leveling** and **logging** are wired today; the rest are a
+  mechanical fast-follow.
+
+REST API (all under auth; guild routes re-check Manage Server):
+
+| Route | Purpose |
+| --- | --- |
+| `GET /api/me` | Current user + manageable guilds |
+| `GET /api/guilds/{id}/modules` | List configurable modules: schema + values |
+| `GET /api/guilds/{id}/modules/{mod}` | One module's schema + values |
+| `PATCH /api/guilds/{id}/modules/{mod}` | Validate + apply a partial config patch |
+
+Enable it:
+
+```bash
+WEB_ENABLED=true
+WEB_PUBLIC_URL=https://dash.example.com   # base for the OAuth redirect
+DISCORD_CLIENT_SECRET=...                 # from the Developer Portal
+WEB_COOKIE_SECURE=true                    # behind HTTPS in production
+```
+
+Add `${WEB_PUBLIC_URL}/auth/callback` as a redirect URI in the Discord
+Developer Portal. The dashboard (a minimal embedded static page) is then served
+at `WEB_PUBLIC_URL` (listens on `WEB_ADDR`, default `:8081`).
+
 ## Adding a module
 
 1. Create `modules/<name>/module.go` with a type embedding `shared.Base` and
@@ -359,8 +407,10 @@ The router, metrics, logging, DB and cache are provided automatically via `Deps`
 
 Built incrementally on this foundation. Shipped: utility, **moderation**,
 **tickets**, **logging**, **leveling**, **economy**, **verification**,
-**automod**, **giveaways**, **AI assistant**. Next: Redis Streams workers, full
-RBAC, gateway sharding, and a REST/web dashboard with OAuth2.
+**automod**, **giveaways**, **AI assistant**, and a **web dashboard**
+(Discord OAuth2 + per-guild module config; leveling + logging wired). Next:
+wire the remaining modules to `Configurable`, Redis Streams workers, full RBAC,
+and gateway sharding.
 
 ## License
 
