@@ -28,6 +28,7 @@ casino features**.
 | **leveling** module | ✅ Shipped |
 | **economy** module (non-gambling) | ✅ Shipped |
 | **verification** module | ✅ Shipped |
+| **automod** module | ✅ Shipped |
 | Deployment (Docker, compose, k8s, CI) | ✅ Authored |
 
 **Verification (this environment — no Docker / no live token):**
@@ -140,6 +141,27 @@ Roles) surfaces a friendly message and is logged. `/verify-disable` flips the
 enabled flag without discarding config; `/verify-status` shows the configuration
 and verified count. Settings cached in-process and invalidated on change.
 
+### automod (`modules/automod`, migration `0008_automod.sql`)
+
+Automatic content moderation driven by gateway **message events** (like logging,
+each handler is panic-guarded). Four independent filters — **banned words**,
+**invite links**, **mass mentions**, **spam** — each with its own enable flag and
+**action** (`delete`, or `delete` + **timeout**). On a match the message is
+deleted, the author is optionally timed out (`GuildMemberTimeout`, duration
+configurable up to Discord's 28-day ceiling) and the action is mirrored to a log
+channel. A configurable role and anyone with **Manage Messages** are exempt.
+
+Filters evaluate in priority order (words → invites → mentions → spam); the first
+hit wins. Word matching tokenises content so single terms match whole words
+(no "class" → "ass" false positives) while multi-word phrases match as a
+substring. Spam uses an **in-process sliding window** of recent message times per
+member (its own mutex), avoiding a DB/cache round-trip on the hot path. Per-guild
+settings and the banned-word set are cached in-process and invalidated on change.
+
+Configured via `/automod` (status, log, exempt, timeout, and a per-filter toggle
+subcommand each) and `/automod-words` (add/remove/list/clear) — both Manage
+Server. Inspecting message content needs the privileged `MessageContent` intent.
+
 ## Conventions worth knowing
 
 - **Custom-ID routing:** `module:action:arg1:arg2`, encoded/decoded by
@@ -159,7 +181,7 @@ and verified count. Settings cached in-process and invalidated on change.
 
 Built incrementally on the same foundation, module by module:
 
-- automod, giveaways, AI assistant.
+- giveaways, AI assistant.
 - Cross-cutting: Redis Streams workers, full RBAC engine, gateway sharding,
   REST/web dashboard + OAuth2.
 

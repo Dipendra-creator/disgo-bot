@@ -155,6 +155,33 @@ mirrored to a log channel.
 Needs the bot's role to sit **above** the verified role and to hold **Manage
 Roles**; a friendly error is shown if the grant is refused.
 
+### AutoMod
+
+Automatic content moderation. Four independent filters, each with its own
+on/off toggle and **action** — *delete the message*, or *delete and timeout the
+author*. Offending messages are always removed and optionally mirrored to a log
+channel. A configurable role and anyone with **Manage Messages** are exempt.
+
+| Filter | Trips on |
+| --- | --- |
+| Banned words | A configurable word/phrase list (whole-word match for single terms) |
+| Invite links | `discord.gg` / `discord.com/invite` links |
+| Mass mentions | A message with ≥ N user/role mentions (incl. `@everyone`) |
+| Spam | More than N messages from one member within a rolling window |
+
+| Command | Permission | Purpose |
+| --- | --- | --- |
+| `/automod status` | Manage Server | Show the full configuration |
+| `/automod log [channel]` | Manage Server | Set/clear the action-log channel |
+| `/automod exempt [role]` | Manage Server | Set/clear a bypass role |
+| `/automod timeout <seconds>` | Manage Server | Duration used by the timeout action |
+| `/automod words\|invites\|mentions\|spam <enabled> [action] [thresholds]` | Manage Server | Toggle and tune a filter |
+| `/automod-words add\|remove\|list\|clear` | Manage Server | Manage the banned-word list |
+
+> **Privileged intent:** inspecting message **content** (words/invites/mentions)
+> requires the `MessageContent` intent — set `discord.privileged_intents: true`
+> and enable it in the Discord developer portal.
+
 ## Architecture
 
 Clean Architecture with an interface-driven module plugin system. Each feature
@@ -207,6 +234,7 @@ modules/
   leveling/      XP, ranks, reward roles, leaderboard
   economy/       non-gambling currency, wallet/bank, shop, inventory
   verification/  member gate: verify button grants a role, audited
+  automod/       content filters: words, invites, mentions, spam
 shared/          Module interface, Deps, Command, Context, permissions, errors, customid
 pkg/             exported helpers (snowflake, humanize)
 database/        //go:embed migrations
@@ -290,9 +318,9 @@ The router, metrics, logging, DB and cache are provided automatically via `Deps`
 ## Roadmap
 
 Built incrementally on this foundation. Shipped: utility, **moderation**,
-**tickets**, **logging**, **leveling**, **economy**, **verification**. Next:
-automod, giveaways, AI assistant, plus Redis Streams workers, full RBAC, gateway
-sharding, and a REST/web dashboard with OAuth2.
+**tickets**, **logging**, **leveling**, **economy**, **verification**,
+**automod**. Next: giveaways, AI assistant, plus Redis Streams workers, full
+RBAC, gateway sharding, and a REST/web dashboard with OAuth2.
 
 ## License
 

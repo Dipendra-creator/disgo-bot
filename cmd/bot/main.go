@@ -20,6 +20,7 @@ import (
 	"github.com/dipu-sharma/disgo-bot/internal/logger"
 	"github.com/dipu-sharma/disgo-bot/internal/observability"
 	"github.com/dipu-sharma/disgo-bot/internal/router"
+	"github.com/dipu-sharma/disgo-bot/modules/automod"
 	"github.com/dipu-sharma/disgo-bot/modules/economy"
 	"github.com/dipu-sharma/disgo-bot/modules/leveling"
 	"github.com/dipu-sharma/disgo-bot/modules/logging"
@@ -104,6 +105,7 @@ func run() error {
 		leveling.New(),
 		economy.New(),
 		verification.New(),
+		automod.New(),
 	}
 	for _, mod := range modules {
 		if err := mod.Init(deps); err != nil {
