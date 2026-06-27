@@ -138,6 +138,23 @@ and purchases use `UPDATE … WHERE balance >= amount RETURNING` (and stock-guar
 Periodic earnings are gated by stamped cooldown columns checked in the same
 atomic update.
 
+### Verification
+
+A member gate. An admin picks a **verified role** and posts a **panel**; members
+click one button to receive the role. Grants are **idempotent** (clicking again
+is a no-op) and each member's first verification is audited and optionally
+mirrored to a log channel.
+
+| Command | Permission | Purpose |
+| --- | --- | --- |
+| `/verify-setup <role> [log_channel] [message] [button_label]` | Manage Server | Configure and enable the gate |
+| `/verify-panel [channel] [title] [description]` | Manage Server | Post a Components-v2 panel with the verify button |
+| `/verify-disable` | Manage Server | Stop the button granting the role (config kept) |
+| `/verify-status` | Manage Server | Show the current configuration and verified count |
+
+Needs the bot's role to sit **above** the verified role and to hold **Manage
+Roles**; a friendly error is shown if the grant is refused.
+
 ## Architecture
 
 Clean Architecture with an interface-driven module plugin system. Each feature
@@ -189,6 +206,7 @@ modules/
   logging/       gateway event mirror (message/member/server)
   leveling/      XP, ranks, reward roles, leaderboard
   economy/       non-gambling currency, wallet/bank, shop, inventory
+  verification/  member gate: verify button grants a role, audited
 shared/          Module interface, Deps, Command, Context, permissions, errors, customid
 pkg/             exported helpers (snowflake, humanize)
 database/        //go:embed migrations
@@ -272,8 +290,8 @@ The router, metrics, logging, DB and cache are provided automatically via `Deps`
 ## Roadmap
 
 Built incrementally on this foundation. Shipped: utility, **moderation**,
-**tickets**, **logging**, **leveling**, **economy**. Next: verification, automod,
-giveaways, AI assistant, plus Redis Streams workers, full RBAC, gateway
+**tickets**, **logging**, **leveling**, **economy**, **verification**. Next:
+automod, giveaways, AI assistant, plus Redis Streams workers, full RBAC, gateway
 sharding, and a REST/web dashboard with OAuth2.
 
 ## License

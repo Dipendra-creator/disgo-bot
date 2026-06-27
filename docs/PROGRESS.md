@@ -27,6 +27,7 @@ casino features**.
 | **logging** module | ✅ Shipped |
 | **leveling** module | ✅ Shipped |
 | **economy** module (non-gambling) | ✅ Shipped |
+| **verification** module | ✅ Shipped |
 | Deployment (Docker, compose, k8s, CI) | ✅ Authored |
 
 **Verification (this environment — no Docker / no live token):**
@@ -125,6 +126,20 @@ and buys run inside `RunInTx`. Periodic earnings stamp `last_daily`/`last_work` 
 the same guarded update (cutoff check), so a member on cooldown causes no write.
 Settings cached in-process and invalidated on change.
 
+### verification (`modules/verification`, migration `0007_verification.sql`)
+
+A member gate. An admin configures a **verified role** (plus optional log channel,
+panel message and button label) with `/verify-setup` and posts a Components-v2
+panel with `/verify-panel`; members click the button to receive the role. The
+grant is **idempotent** — members who already hold the role get an "already
+verified" reply, and `GuildMemberRoleAdd` is a no-op on Discord's side regardless.
+First-time verifications are written to `verification_records`
+(`INSERT … ON CONFLICT DO NOTHING`, `RowsAffected` ⇒ first-time) and, when only
+new, mirrored to the log channel. A failed grant (role hierarchy / missing Manage
+Roles) surfaces a friendly message and is logged. `/verify-disable` flips the
+enabled flag without discarding config; `/verify-status` shows the configuration
+and verified count. Settings cached in-process and invalidated on change.
+
 ## Conventions worth knowing
 
 - **Custom-ID routing:** `module:action:arg1:arg2`, encoded/decoded by
@@ -144,7 +159,7 @@ Settings cached in-process and invalidated on change.
 
 Built incrementally on the same foundation, module by module:
 
-- verification, automod, giveaways, AI assistant.
+- automod, giveaways, AI assistant.
 - Cross-cutting: Redis Streams workers, full RBAC engine, gateway sharding,
   REST/web dashboard + OAuth2.
 

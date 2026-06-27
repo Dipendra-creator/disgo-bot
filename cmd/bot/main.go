@@ -26,6 +26,7 @@ import (
 	"github.com/dipu-sharma/disgo-bot/modules/moderation"
 	"github.com/dipu-sharma/disgo-bot/modules/tickets"
 	"github.com/dipu-sharma/disgo-bot/modules/utility"
+	"github.com/dipu-sharma/disgo-bot/modules/verification"
 	"github.com/dipu-sharma/disgo-bot/shared"
 	"go.uber.org/zap"
 )
@@ -102,6 +103,7 @@ func run() error {
 		logging.New(),
 		leveling.New(),
 		economy.New(),
+		verification.New(),
 	}
 	for _, mod := range modules {
 		if err := mod.Init(deps); err != nil {
