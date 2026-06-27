@@ -30,6 +30,7 @@ type Server struct {
 
 	oauth      *oauth2.Config
 	sess       *sessionStore
+	audit      *auditStore
 	publicHost string
 
 	mods  map[string]shared.Configurable // configurable modules by name
@@ -68,6 +69,7 @@ func New(deps *shared.Deps, modules []shared.Module) (*Server, error) {
 		cfg:        cfg,
 		oauth:      oauth,
 		sess:       newSessionStore(deps.Cache, ttl),
+		audit:      newAuditStore(deps.DB),
 		publicHost: pub.Host,
 		mods:       map[string]shared.Configurable{},
 	}
@@ -98,6 +100,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/guilds/{id}/modules", s.requireAuth(s.requireGuildManage(s.handleModules)))
 	mux.HandleFunc("GET /api/guilds/{id}/modules/{mod}", s.requireAuth(s.requireGuildManage(s.handleModuleGet)))
 	mux.HandleFunc("PATCH /api/guilds/{id}/modules/{mod}", s.requireAuth(s.requireGuildManage(s.handleModulePatch)))
+	mux.HandleFunc("GET /api/guilds/{id}/audit", s.requireAuth(s.requireGuildManage(s.handleAudit)))
 
 	// Static dashboard at "/".
 	sub, _ := fs.Sub(staticFS, "static")

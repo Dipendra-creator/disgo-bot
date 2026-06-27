@@ -371,6 +371,9 @@ slash commands. It is **disabled by default** and started only when
   module's tables. Every module with per-guild settings is wired — leveling,
   logging, moderation, tickets, economy, verification, automod, and AI;
   giveaways has no guild-level settings, so it is intentionally not exposed.
+- **Audit log:** every accepted config change is recorded (who, which module,
+  the submitted fields, when) to `web_audit_log` and surfaced per guild in the
+  dashboard. Recording is best-effort — it never fails the config write.
 
 REST API (all under auth; guild routes re-check Manage Server):
 
@@ -380,6 +383,7 @@ REST API (all under auth; guild routes re-check Manage Server):
 | `GET /api/guilds/{id}/modules` | List configurable modules: schema + values |
 | `GET /api/guilds/{id}/modules/{mod}` | One module's schema + values |
 | `PATCH /api/guilds/{id}/modules/{mod}` | Validate + apply a partial config patch |
+| `GET /api/guilds/{id}/audit` | Recent dashboard config changes (newest first) |
 
 Enable it:
 

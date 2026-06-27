@@ -102,6 +102,7 @@ function renderModule(guildID, mod) {
       );
       if (updated && updated.values) mod.values = updated.values;
       toast(`${mod.title} saved`);
+      loadAudit(guildID); // reflect the change just made
     } catch (e) {
       toast(e.message, true);
     } finally {
@@ -126,6 +127,52 @@ async function loadModules(guildID) {
   } catch (e) {
     container.innerHTML = `<p class='muted'>${e.message}</p>`;
   }
+}
+
+// loadAudit renders the guild's recent dashboard changes (newest first).
+async function loadAudit(guildID) {
+  const container = $("#audit");
+  let rows;
+  try {
+    rows = await api("GET", `/api/guilds/${guildID}/audit`);
+  } catch {
+    container.innerHTML = "";
+    return;
+  }
+  if (!rows || !rows.length) {
+    container.innerHTML = "";
+    return;
+  }
+  const card = document.createElement("div");
+  card.className = "card";
+  const h = document.createElement("h2");
+  h.textContent = "Recent changes";
+  card.appendChild(h);
+
+  for (const row of rows) {
+    const div = document.createElement("div");
+    div.className = "audit-row";
+    const when = new Date(row.created_at).toLocaleString();
+    const keys = Object.keys(row.changes || {});
+    const fields = keys.length
+      ? keys.map((k) => `<code>${k}</code>`).join(" ")
+      : "<span class='muted'>(no fields)</span>";
+    div.innerHTML =
+      `<div>${esc(row.username || row.user_id)} edited ` +
+      `<strong>${esc(row.module)}</strong></div>` +
+      `<div>${fields}</div>` +
+      `<div class="meta">${esc(when)}</div>`;
+    card.appendChild(div);
+  }
+  container.innerHTML = "";
+  container.appendChild(card);
+}
+
+// esc renders untrusted text safely into innerHTML.
+function esc(s) {
+  const d = document.createElement("div");
+  d.textContent = String(s ?? "");
+  return d.innerHTML;
 }
 
 function renderUser(me) {
@@ -168,8 +215,9 @@ async function init() {
     opt.textContent = g.name;
     sel.appendChild(opt);
   }
-  sel.onchange = () => loadModules(sel.value);
-  loadModules(sel.value);
+  const loadGuild = (id) => { loadModules(id); loadAudit(id); };
+  sel.onchange = () => loadGuild(sel.value);
+  loadGuild(sel.value);
 }
 
 init();

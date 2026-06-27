@@ -40,6 +40,10 @@
       padding: 10px 16px; opacity: 0; transition: opacity .2s; }
     .toast.show { opacity: 1; }
     .toast.err { border-color: #b3404a; }
+    .audit-row { border-top: 1px solid #333; padding: 10px 0; font-size: 13px; }
+    .audit-row:first-of-type { border-top: 0; }
+    .audit-row .meta { color: #9aa0a6; }
+    .audit-row code { background: #1a1b1e; padding: 1px 5px; border-radius: 4px; }
   </style>
 </head>
 <body>
@@ -59,6 +63,7 @@
         <select id="guild"></select>
       </div>
       <div id="modules"></div>
+      <div id="audit"></div>
     </div>
   </main>
   <div id="toast" class="toast"></div>

@@ -204,7 +204,7 @@ privileged `MessageContent` intent.
 
 Configured via `/ask` (public) and `/ai channel|system|status` (Manage Server).
 
-### web dashboard (`internal/web`, `shared/configurable.go` — no migration)
+### web dashboard (`internal/web`, `shared/configurable.go`, migration `0011_web_audit.sql`)
 
 Optional browser dashboard so admins configure modules without slash commands.
 **Disabled by default**; started from `cmd/bot` only when `cfg.Web.Enabled` and
@@ -242,8 +242,15 @@ under `web:sess:<token>` with TTL; httpOnly, `SameSite=Lax`, `Secure`
 `GET /api/guilds/{id}/modules`, `GET …/{mod}`, `PATCH …/{mod}`. Every guild
 route re-checks Manage Server **server-side** (`requireGuildManage`) — the
 client's guild list is never trusted for writes; mutations also require an
-origin/referer **CSRF** check and a 64 KB body cap. Frontend is a minimal
-`//go:embed` vanilla-JS page (login → guild picker → schema-driven form → PATCH).
+origin/referer **CSRF** check and a 64 KB body cap. `GET …/audit` lists a
+guild's recent config changes. Frontend is a minimal `//go:embed` vanilla-JS
+page (login → guild picker → schema-driven form → PATCH → recent-changes list).
+
+**Audit log** (`web_audit_log`, migration `0011`) — every accepted PATCH records
+who changed it (Discord user from the session), the guild, module, and the
+submitted field patch (JSONB), newest-first per guild. Recording is best-effort
+(logged, never fails the config write) and the store degrades to a no-op without
+a database, so the API and tests run unpersisted.
 
 Config: `WEB_ENABLED`, `WEB_PUBLIC_URL`, `DISCORD_CLIENT_SECRET` (never logged),
 `WEB_ADDR` (`:8081`), `WEB_COOKIE_SECURE`, `WEB_SESSION_HOURS` (168). All
@@ -269,7 +276,7 @@ settings-bearing modules are now wired to the seam.
 Built incrementally on the same foundation, module by module:
 
 - Cross-cutting: Redis Streams workers, full RBAC engine, gateway sharding;
-  dashboard follow-ups (audit log of changes, API rate-limiting, real SPA).
+  dashboard follow-ups (API rate-limiting, real SPA).
 
 All originally-scoped feature modules are shipped, plus the web-dashboard
 foundation. Modules were built in sequence (logging → leveling → economy →

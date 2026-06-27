@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -83,7 +84,7 @@ func (s *Server) handleModuleGet(w http.ResponseWriter, r *http.Request, _ *Sess
 }
 
 // handleModulePatch validates and applies a partial config patch.
-func (s *Server) handleModulePatch(w http.ResponseWriter, r *http.Request, _ *Session, guildID string) {
+func (s *Server) handleModulePatch(w http.ResponseWriter, r *http.Request, sess *Session, guildID string) {
 	if !s.checkCSRF(r) {
 		writeErr(w, http.StatusForbidden, "bad origin")
 		return
@@ -120,6 +121,10 @@ func (s *Server) handleModulePatch(w http.ResponseWriter, r *http.Request, _ *Se
 		return
 	}
 
+	// Record the change for the audit log. The config write already succeeded,
+	// so a recording failure is logged but never fails the request.
+	s.recordAudit(r.Context(), gid, sess, name, patch)
+
 	// Return the fresh state so the client reflects what was actually stored.
 	mc, err := s.moduleConfigFor(r, name, gid)
 	if err != nil {
@@ -127,6 +132,43 @@ func (s *Server) handleModulePatch(w http.ResponseWriter, r *http.Request, _ *Se
 		return
 	}
 	writeJSON(w, http.StatusOK, mc)
+}
+
+// recordAudit appends an entry describing an accepted config change. It is
+// best-effort: any error is logged, not surfaced, since the change is committed.
+func (s *Server) recordAudit(ctx context.Context, gid int64, sess *Session, module string, patch map[string]any) {
+	uid, _ := strconv.ParseInt(sess.UserID, 10, 64) // 0 on parse failure
+	err := s.audit.record(ctx, &auditEntry{
+		GuildID:  gid,
+		UserID:   uid,
+		Username: sess.Username,
+		Module:   module,
+		Changes:  patch,
+	})
+	if err != nil {
+		s.log.Warn("audit record failed",
+			zap.String("module", module), zap.Int64("guild", gid), zap.Error(err))
+	}
+}
+
+// handleAudit returns a guild's most recent dashboard config changes.
+func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request, _ *Session, guildID string) {
+	gid, err := strconv.ParseInt(guildID, 10, 64)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid guild id")
+		return
+	}
+	rows, err := s.audit.list(r.Context(), gid, auditLimit)
+	if err != nil {
+		s.log.Warn("audit list failed", zap.Int64("guild", gid), zap.Error(err))
+		writeErr(w, http.StatusInternalServerError, "failed to read audit log")
+		return
+	}
+	views := make([]auditView, 0, len(rows))
+	for i := range rows {
+		views = append(views, rows[i].toView())
+	}
+	writeJSON(w, http.StatusOK, views)
 }
 
 // moduleConfigFor reads one module's schema and current values for a guild.
