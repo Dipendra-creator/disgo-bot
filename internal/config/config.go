@@ -30,6 +30,7 @@ type Config struct {
 	Sentry   SentryConfig   `yaml:"sentry"`
 	Metrics  MetricsConfig  `yaml:"metrics"`
 	HTTP     HTTPConfig     `yaml:"http"`
+	AI       AIConfig       `yaml:"ai"`
 }
 
 // DiscordConfig holds gateway credentials and command-registration settings.
@@ -115,6 +116,24 @@ type HTTPConfig struct {
 	HealthAddr string `yaml:"health_addr"`
 }
 
+// AIConfig configures the optional AI-assistant module (Anthropic-backed). When
+// Enabled is false or APIKey is empty the AI commands report that the assistant
+// is unavailable rather than failing hard.
+type AIConfig struct {
+	Enabled bool `yaml:"enabled"`
+	// APIKey is the Anthropic API key. Provide via ANTHROPIC_API_KEY.
+	APIKey string `yaml:"api_key"`
+	// Model is the Claude model ID (e.g. claude-opus-4-8).
+	Model string `yaml:"model"`
+	// MaxTokens caps a single completion's output length.
+	MaxTokens int `yaml:"max_tokens" validate:"gte=0"`
+	// BaseURL is the API base; override only for proxies/gateways.
+	BaseURL string `yaml:"base_url"`
+}
+
+// Ready reports whether the assistant can actually serve requests.
+func (a AIConfig) Ready() bool { return a.Enabled && a.APIKey != "" }
+
 // Default returns a Config populated with sensible development defaults.
 // Secrets (token, passwords) are intentionally left empty.
 func Default() Config {
@@ -147,6 +166,12 @@ func Default() Config {
 			Path:    "/metrics",
 		},
 		HTTP: HTTPConfig{HealthAddr: ":8080"},
+		AI: AIConfig{
+			Enabled:   false,
+			Model:     "claude-opus-4-8",
+			MaxTokens: 1024,
+			BaseURL:   "https://api.anthropic.com",
+		},
 	}
 }
 
@@ -213,6 +238,12 @@ func applyEnv(cfg *Config) {
 
 	setBool(&cfg.Sentry.Enabled, "SENTRY_ENABLED")
 	setStr(&cfg.Sentry.DSN, "SENTRY_DSN")
+
+	setBool(&cfg.AI.Enabled, "AI_ENABLED")
+	setStr(&cfg.AI.APIKey, "ANTHROPIC_API_KEY")
+	setStr(&cfg.AI.Model, "AI_MODEL")
+	setInt(&cfg.AI.MaxTokens, "AI_MAX_TOKENS")
+	setStr(&cfg.AI.BaseURL, "AI_BASE_URL")
 }
 
 func setStr(dst *string, env string) {

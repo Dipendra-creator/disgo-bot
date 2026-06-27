@@ -30,6 +30,7 @@ casino features**.
 | **verification** module | ✅ Shipped |
 | **automod** module | ✅ Shipped |
 | **giveaways** module | ✅ Shipped |
+| **ai** assistant module | ✅ Shipped |
 | Deployment (Docker, compose, k8s, CI) | ✅ Authored |
 
 **Verification (this environment — no Docker / no live token):**
@@ -179,6 +180,29 @@ a failed post rolls back the row. Entries cascade-delete with the giveaway via a
 foreign key. Because end time lives in the database, giveaways still resolve
 after a restart — no external scheduler.
 
+### ai (`modules/ai`, migration `0010_ai.sql`)
+
+An opt-in Claude-backed assistant. `/ask` answers a one-off question for anyone
+(rate-limited per user via the cache, `ai:cd:<guild>:<user>` with a 12s TTL);
+admins can set an opt-in **assistant channel** where the bot replies to every
+message (driven by a panic-guarded `MessageCreate` handler, like logging/automod).
+
+Completions go through a **`Provider` interface** so the backend stays swappable
+and mockable; the default `anthropicProvider` is a dependency-free HTTP client for
+the Anthropic **Messages API** (`POST /v1/messages`, `x-api-key` +
+`anthropic-version: 2023-06-01`, request `{model, max_tokens, system, messages}`,
+response `content[].text`). The module is **inert until an API key is supplied** —
+`config.AI.Ready()` (`AI_ENABLED` + `ANTHROPIC_API_KEY`) gates provider wiring, and
+`/ask` / the assistant channel report unavailability rather than failing hard.
+
+Per-guild **system prompt** override and assistant channel are stored in
+`ai_settings` and cached in-process (invalidated on change). Replies are
+rune-safe-truncated under Discord's 2000-char limit. Default model
+`claude-opus-4-8` (override `AI_MODEL`); the assistant channel needs the
+privileged `MessageContent` intent.
+
+Configured via `/ask` (public) and `/ai channel|system|status` (Manage Server).
+
 ## Conventions worth knowing
 
 - **Custom-ID routing:** `module:action:arg1:arg2`, encoded/decoded by
@@ -198,12 +222,12 @@ after a restart — no external scheduler.
 
 Built incrementally on the same foundation, module by module:
 
-- AI assistant.
 - Cross-cutting: Redis Streams workers, full RBAC engine, gateway sharding,
   REST/web dashboard + OAuth2.
 
-Modules are being built in sequence (logging → leveling → economy → verification
-→ automod → giveaways → AI), each verified and committed independently.
+All originally-scoped feature modules are shipped. Modules were built in sequence
+(logging → leveling → economy → verification → automod → giveaways → AI), each
+verified and committed independently.
 
 ## How to verify locally
 

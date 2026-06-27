@@ -20,6 +20,7 @@ import (
 	"github.com/dipu-sharma/disgo-bot/internal/logger"
 	"github.com/dipu-sharma/disgo-bot/internal/observability"
 	"github.com/dipu-sharma/disgo-bot/internal/router"
+	"github.com/dipu-sharma/disgo-bot/modules/ai"
 	"github.com/dipu-sharma/disgo-bot/modules/automod"
 	"github.com/dipu-sharma/disgo-bot/modules/economy"
 	"github.com/dipu-sharma/disgo-bot/modules/giveaways"
@@ -108,6 +109,7 @@ func run() error {
 		verification.New(),
 		automod.New(),
 		giveaways.New(),
+		ai.New(),
 	}
 	for _, mod := range modules {
 		if err := mod.Init(deps); err != nil {

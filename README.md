@@ -199,6 +199,27 @@ pings the winners. Winners can be **rerolled** afterwards.
 The entry button's label shows the live entry count. The end-time sweeper runs
 every 20s, so giveaways still resolve after a restart — no external scheduler.
 
+### AI Assistant
+
+An opt-in Claude-backed assistant. Anyone can `/ask` a one-off question
+(rate-limited per user); admins can dedicate a **channel** where the bot replies
+to every message. Completions go through a `Provider` interface — an Anthropic
+**Messages API** implementation by default — so the backend is swappable and
+mockable. The module is **inert until the bot owner supplies an API key**;
+without one the commands report that the assistant is unavailable rather than
+failing.
+
+| Command | Permission | Purpose |
+| --- | --- | --- |
+| `/ask <prompt>` | — | Ask a one-off question (public, rate-limited) |
+| `/ai channel [channel]` | Manage Server | Set/clear an opt-in channel the bot replies in |
+| `/ai system [prompt]` | Manage Server | Set/clear a custom system prompt (omit to reset) |
+| `/ai status` | Manage Server | Show configuration and availability |
+
+Configure with `AI_ENABLED=true` + `ANTHROPIC_API_KEY` (model defaults to
+`claude-opus-4-8`; override with `AI_MODEL`). The assistant **channel** reads
+message content, so it needs the `MessageContent` privileged intent.
+
 ## Architecture
 
 Clean Architecture with an interface-driven module plugin system. Each feature
@@ -253,6 +274,7 @@ modules/
   verification/  member gate: verify button grants a role, audited
   automod/       content filters: words, invites, mentions, spam
   giveaways/     timed prize draws: entry button, sweeper, reroll
+  ai/            opt-in Claude assistant: /ask + assistant channel, provider iface
 shared/          Module interface, Deps, Command, Context, permissions, errors, customid
 pkg/             exported helpers (snowflake, humanize)
 database/        //go:embed migrations
@@ -337,7 +359,7 @@ The router, metrics, logging, DB and cache are provided automatically via `Deps`
 
 Built incrementally on this foundation. Shipped: utility, **moderation**,
 **tickets**, **logging**, **leveling**, **economy**, **verification**,
-**automod**, **giveaways**. Next: AI assistant, plus Redis Streams workers, full
+**automod**, **giveaways**, **AI assistant**. Next: Redis Streams workers, full
 RBAC, gateway sharding, and a REST/web dashboard with OAuth2.
 
 ## License
