@@ -29,6 +29,7 @@ casino features**.
 | **economy** module (non-gambling) | ✅ Shipped |
 | **verification** module | ✅ Shipped |
 | **automod** module | ✅ Shipped |
+| **giveaways** module | ✅ Shipped |
 | Deployment (Docker, compose, k8s, CI) | ✅ Authored |
 
 **Verification (this environment — no Docker / no live token):**
@@ -162,6 +163,22 @@ Configured via `/automod` (status, log, exempt, timeout, and a per-filter toggle
 subcommand each) and `/automod-words` (add/remove/list/clear) — both Manage
 Server. Inspecting message content needs the privileged `MessageContent` intent.
 
+### giveaways (`modules/giveaways`, migration `0009_giveaways.sql`)
+
+Timed prize draws. `/giveaway start` posts a Components-v2 panel with an **Enter**
+button whose label shows the live entry count; clicking toggles entry (a second
+click leaves). An **in-process sweeper** (20s tick, mirroring moderation's
+temp-ban sweeper) ends giveaways whose `ends_at` has passed: it draws winners
+uniformly at random (`math/rand` shuffle), records them, edits the panel to the
+ended state and pings the winners in the channel (allowed-mentions scoped to
+users). `/giveaway end` ends one early; `/giveaway reroll` draws fresh winners
+for an ended giveaway; `/giveaway list` shows active ones — all Manage Server.
+
+The panel post happens after the row insert (the button needs the giveaway ID);
+a failed post rolls back the row. Entries cascade-delete with the giveaway via a
+foreign key. Because end time lives in the database, giveaways still resolve
+after a restart — no external scheduler.
+
 ## Conventions worth knowing
 
 - **Custom-ID routing:** `module:action:arg1:arg2`, encoded/decoded by
@@ -181,7 +198,7 @@ Server. Inspecting message content needs the privileged `MessageContent` intent.
 
 Built incrementally on the same foundation, module by module:
 
-- giveaways, AI assistant.
+- AI assistant.
 - Cross-cutting: Redis Streams workers, full RBAC engine, gateway sharding,
   REST/web dashboard + OAuth2.
 

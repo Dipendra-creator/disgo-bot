@@ -182,6 +182,23 @@ channel. A configurable role and anyone with **Manage Messages** are exempt.
 > requires the `MessageContent` intent — set `discord.privileged_intents: true`
 > and enable it in the Discord developer portal.
 
+### Giveaways
+
+Timed prize draws. A host starts one with a prize, duration and winner count;
+members **enter with one button** (click again to leave); an in-process sweeper
+**draws winners** when the timer expires, edits the panel to show the result and
+pings the winners. Winners can be **rerolled** afterwards.
+
+| Command | Permission | Purpose |
+| --- | --- | --- |
+| `/giveaway start <prize> <duration> [winners] [channel]` | Manage Server | Post a giveaway (durations like `30m`, `2h`, `7d`) |
+| `/giveaway end <id>` | Manage Server | End a running giveaway now and draw winners |
+| `/giveaway reroll <id> [winners]` | Manage Server | Draw fresh winners for an ended giveaway |
+| `/giveaway list` | Manage Server | List the running giveaways |
+
+The entry button's label shows the live entry count. The end-time sweeper runs
+every 20s, so giveaways still resolve after a restart — no external scheduler.
+
 ## Architecture
 
 Clean Architecture with an interface-driven module plugin system. Each feature
@@ -235,6 +252,7 @@ modules/
   economy/       non-gambling currency, wallet/bank, shop, inventory
   verification/  member gate: verify button grants a role, audited
   automod/       content filters: words, invites, mentions, spam
+  giveaways/     timed prize draws: entry button, sweeper, reroll
 shared/          Module interface, Deps, Command, Context, permissions, errors, customid
 pkg/             exported helpers (snowflake, humanize)
 database/        //go:embed migrations
@@ -319,7 +337,7 @@ The router, metrics, logging, DB and cache are provided automatically via `Deps`
 
 Built incrementally on this foundation. Shipped: utility, **moderation**,
 **tickets**, **logging**, **leveling**, **economy**, **verification**,
-**automod**. Next: giveaways, AI assistant, plus Redis Streams workers, full
+**automod**, **giveaways**. Next: AI assistant, plus Redis Streams workers, full
 RBAC, gateway sharding, and a REST/web dashboard with OAuth2.
 
 ## License

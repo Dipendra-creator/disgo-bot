@@ -22,6 +22,7 @@ import (
 	"github.com/dipu-sharma/disgo-bot/internal/router"
 	"github.com/dipu-sharma/disgo-bot/modules/automod"
 	"github.com/dipu-sharma/disgo-bot/modules/economy"
+	"github.com/dipu-sharma/disgo-bot/modules/giveaways"
 	"github.com/dipu-sharma/disgo-bot/modules/leveling"
 	"github.com/dipu-sharma/disgo-bot/modules/logging"
 	"github.com/dipu-sharma/disgo-bot/modules/moderation"
@@ -106,6 +107,7 @@ func run() error {
 		economy.New(),
 		verification.New(),
 		automod.New(),
+		giveaways.New(),
 	}
 	for _, mod := range modules {
 		if err := mod.Init(deps); err != nil {
