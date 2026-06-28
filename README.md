@@ -11,7 +11,8 @@ migrations are embedded. Migrations run automatically on first start.
 
 | File | Purpose |
 |------|---------|
-| `setup.sh` | Interactive installer — asks for config, then installs a systemd service |
+| `.env.example` | Template — copy to `.env`, fill in, the installer reads it |
+| `setup.sh` | Installer — reads `.env` (no prompts), else an interactive wizard |
 | `disgo-bot-linux-amd64` | Static binary for x86_64 (Intel/AMD EC2) |
 | `disgo-bot-linux-arm64` | Static binary for aarch64 (Graviton EC2) |
 
@@ -22,34 +23,42 @@ migrations are embedded. Migrations run automatically on first start.
 ```bash
 git clone -b build https://github.com/Dipendra-creator/disgo-bot.git
 cd disgo-bot
-sudo ./setup.sh
+cp .env.example .env
+nano .env            # fill in your values
+sudo ./setup.sh      # reads ./.env — no prompts
 ```
 
-The installer **asks for the configuration first** (the same values used locally —
-Discord token, app ID, OAuth client secret, database, dashboard URL, etc.), then:
+The installer reads `./.env` (or `--env PATH`, or an existing
+`/etc/disgo-bot/disgo-bot.env`) and runs **non-interactively**. With no env file
+present it falls back to an interactive wizard. Either way it then:
 
-1. installs `ca-certificates`, `curl`, and — if you choose a local database —
-   `postgresql`;
-2. provisions a PostgreSQL role + database (or uses a `DATABASE_URL` you paste, e.g.
-   an RDS endpoint);
-3. installs the binary to `/usr/local/bin/disgo-bot`;
+1. installs `ca-certificates`, `curl`, `openssl`, and — unless you point it at an
+   existing database — `postgresql`;
+2. provisions a PostgreSQL role + database (or uses the `DATABASE_URL` you set, e.g.
+   an RDS endpoint), waiting for the cluster to come up on a fresh VM;
+3. installs the arch-matched binary to `/usr/local/bin/disgo-bot`;
 4. writes secrets to `/etc/disgo-bot/disgo-bot.env` (mode `0600`, root-owned);
 5. creates a hardened `systemd` unit running as an unprivileged `disgo` user, then
    enables and starts it.
 
-## Configuration prompts
+The `.env` parser strips a Windows CR, surrounding quotes and stray whitespace —
+so a file edited on Windows won't smuggle a trailing `\r` into your bot token
+(that is exactly what Discord rejects as `close 4004: Authentication failed`).
 
-| Prompt | Env key | Notes |
-|--------|---------|-------|
-| Application (client) ID | `DISCORD_APP_ID` | required |
-| Bot token | `DISCORD_TOKEN` | required, hidden input |
-| Dev guild ID | `DISCORD_DEV_GUILD_ID` | blank = register commands globally |
-| Privileged intents | `DISCORD_PRIVILEGED_INTENTS` | also enable in the Discord portal |
-| Database | `DATABASE_URL` | install local PG, or paste a remote DSN |
-| Dashboard | `WEB_ENABLED` / `WEB_ADDR` / `WEB_PUBLIC_URL` / `WEB_COOKIE_SECURE` | |
-| OAuth client secret | `DISCORD_CLIENT_SECRET` | required when the dashboard is on |
-| AI module | `AI_ENABLED` / `ANTHROPIC_API_KEY` / `AI_MODEL` | optional |
-| Runtime | `DISGO_ENV` / `LOG_LEVEL` / `LOG_FORMAT` | default production / info / json |
+## Configuration (`.env`)
+
+| Key | Notes |
+|-----|-------|
+| `DISCORD_APP_ID` | required |
+| `DISCORD_TOKEN` | required — must be current and belong to the same app as the ID |
+| `DISCORD_DEV_GUILD_ID` | blank = register commands globally |
+| `DISCORD_PRIVILEGED_INTENTS` | `true`/`false`; also toggle in the Discord portal |
+| `DATABASE_URL` | set for a remote/managed DB; leave blank to use a local PG |
+| `PG_INSTALL` / `PG_DB` / `PG_USER` / `PG_PASSWORD` | local-PG provisioning (blank password = auto-generate) |
+| `WEB_ENABLED` / `WEB_ADDR` / `WEB_PUBLIC_URL` / `WEB_COOKIE_SECURE` | dashboard; URL blank = auto-detect public IP |
+| `DISCORD_CLIENT_SECRET` | required when `WEB_ENABLED=true` |
+| `AI_ENABLED` / `ANTHROPIC_API_KEY` / `AI_MODEL` | optional AI module |
+| `DISGO_ENV` / `LOG_LEVEL` / `LOG_FORMAT` | default production / info / json |
 
 ## After install
 
