@@ -41,6 +41,7 @@ type Server struct {
 	leveling   shared.Leveling   // leveling console seam, if a module exposes it
 	tickets    shared.Tickets    // tickets console seam, if a module exposes it
 	giveaways  shared.Giveaways  // giveaways console seam, if a module exposes it
+	automod    shared.AutoMod    // automod console seam, if a module exposes it
 
 	http *http.Server
 }
@@ -99,6 +100,9 @@ func New(deps *shared.Deps, modules []shared.Module) (*Server, error) {
 		if gw, ok := m.(shared.Giveaways); ok {
 			s.giveaways = gw
 		}
+		if am, ok := m.(shared.AutoMod); ok {
+			s.automod = am
+		}
 	}
 	s.http = &http.Server{
 		Addr:              cfg.Addr,
@@ -155,6 +159,12 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/guilds/{id}/giveaways", s.requireAuth(s.requireGuildManage(s.handleGiveawayCreate)))
 	mux.HandleFunc("POST /api/guilds/{id}/giveaways/{gw}/end", s.requireAuth(s.requireGuildManage(s.handleGiveawayEnd)))
 	mux.HandleFunc("POST /api/guilds/{id}/giveaways/{gw}/reroll", s.requireAuth(s.requireGuildManage(s.handleGiveawayReroll)))
+
+	// AutoMod console — banned-word editor + violation log.
+	mux.HandleFunc("GET /api/guilds/{id}/automod/words", s.requireAuth(s.requireGuildManage(s.handleAutoModWords)))
+	mux.HandleFunc("POST /api/guilds/{id}/automod/words", s.requireAuth(s.requireGuildManage(s.handleAutoModWordAdd)))
+	mux.HandleFunc("DELETE /api/guilds/{id}/automod/words", s.requireAuth(s.requireGuildManage(s.handleAutoModWordRemove)))
+	mux.HandleFunc("GET /api/guilds/{id}/automod/violations", s.requireAuth(s.requireGuildManage(s.handleAutoModViolations)))
 
 	// Feature discovery — which management consoles the dashboard should show.
 	mux.HandleFunc("GET /api/guilds/{id}/features", s.requireAuth(s.requireGuildManage(s.handleFeatures)))

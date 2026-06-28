@@ -250,6 +250,33 @@ func (s *Service) HandleMessage(mc *discordgo.MessageCreate) {
 		return
 	}
 	s.enforce(mc, set, v)
+	s.recordViolation(ctx, mc, v)
+}
+
+// recordViolation appends the enforced action to the audit log. It is
+// best-effort: a write failure is logged but never interrupts enforcement.
+func (s *Service) recordViolation(ctx context.Context, mc *discordgo.MessageCreate, v *violation) {
+	name := ""
+	if mc.Author != nil {
+		name = mc.Author.Username
+	}
+	row := &Violation{
+		GuildID:   pid(mc.GuildID),
+		UserID:    pid(mc.Author.ID),
+		UserName:  name,
+		ChannelID: pid(mc.ChannelID),
+		Filter:    v.filter,
+		Action:    v.action,
+		Detail:    v.detail,
+	}
+	if err := s.repo.insertViolation(ctx, row); err != nil {
+		s.log.Warn("automod violation log failed", zap.Error(err), zap.String("guild", mc.GuildID))
+	}
+}
+
+// ListViolations returns a page of the guild's violation log plus the total.
+func (s *Service) ListViolations(ctx context.Context, guildID int64, limit, offset int) ([]Violation, int, error) {
+	return s.repo.listViolations(ctx, guildID, limit, offset)
 }
 
 // evaluate runs the enabled filters in priority order and returns the first hit.

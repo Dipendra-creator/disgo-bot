@@ -91,3 +91,20 @@ type Word struct {
 	GuildID int64  `bun:"guild_id,notnull"`
 	Word    string `bun:"word,notnull"`
 }
+
+// Violation is an audit-trail row for one enforced automod action. The author's
+// display name is denormalised at write time since the member or message may be
+// gone when the dashboard reads the log.
+type Violation struct {
+	bun.BaseModel `bun:"table:automod_violations,alias:av"`
+
+	ID        int64     `bun:"id,pk,autoincrement"`
+	GuildID   int64     `bun:"guild_id,notnull"`
+	UserID    int64     `bun:"user_id,notnull"`
+	UserName  string    `bun:"user_name,notnull"`
+	ChannelID int64     `bun:"channel_id,notnull"`
+	Filter    string    `bun:"filter,notnull"`
+	Action    string    `bun:"action,notnull"`
+	Detail    string    `bun:"detail,notnull"`
+	CreatedAt time.Time `bun:"created_at,nullzero,notnull,default:now()"`
+}

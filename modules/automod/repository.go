@@ -99,3 +99,26 @@ func (r *repo) listWords(ctx context.Context, guildID int64) ([]string, error) {
 	}
 	return out, nil
 }
+
+// --- violation log ---
+
+// insertViolation appends one enforced-action row.
+func (r *repo) insertViolation(ctx context.Context, v *Violation) error {
+	_, err := r.db.NewInsert().Model(v).Exec(ctx)
+	return err
+}
+
+// listViolations returns a page of a guild's violation log (newest first) and
+// the total count ignoring the window.
+func (r *repo) listViolations(ctx context.Context, guildID int64, limit, offset int) ([]Violation, int, error) {
+	var rows []Violation
+	total, err := r.db.NewSelect().Model(&rows).
+		Where("guild_id = ?", guildID).
+		Order("created_at DESC").
+		Limit(limit).Offset(offset).
+		ScanAndCount(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	return rows, total, nil
+}

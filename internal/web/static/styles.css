@@ -248,6 +248,12 @@ select.input { appearance: none; cursor: pointer;
 .tr-author { font-weight: 600; color: var(--text); white-space: nowrap; }
 .tr-content { color: var(--text-2); min-width: 0; overflow-wrap: anywhere; }
 
+/* Banned-word editor — removable chips. */
+.word-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.word-chip { display: inline-flex; align-items: center; gap: 4px; background: var(--canvas); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 3px 4px 3px 10px; font: 13px var(--font); color: var(--text); }
+.word-x { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border: 0; border-radius: 4px; background: transparent; color: var(--text-3); font-size: 16px; line-height: 1; cursor: pointer; }
+.word-x:hover { background: var(--raised); color: var(--error); }
+
 @media (max-width: 720px) {
   :root { --sb-w: 0px; }
   #sidebar { display: none; }

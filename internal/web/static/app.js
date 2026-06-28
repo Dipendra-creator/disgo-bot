@@ -127,6 +127,7 @@ const state = {
   lvl: { offset: 0 }, // leveling leaderboard pager state
   tk: { status: "active", offset: 0 }, // tickets console filter/pager state
   gw: { offset: 0 }, // giveaways pager state
+  am: { offset: 0 }, // automod violation-log pager state
 };
 
 const TEXT_CHANNEL_TYPES = new Set([0, 5, 15]); // text, announcement, forum
@@ -1289,6 +1290,131 @@ async function pageGiveaways(root) {
   await renderGiveaways(listCard);
 }
 
+/* -------------------------------------------------- automod console (Inc5) */
+
+const VIOLATION_LIMIT = 25;
+const FILTER_LABELS = { words: "Banned word", invites: "Invite link", mentions: "Mass mention", spam: "Spam" };
+
+// actionBadge renders the enforcement outcome — timeout reuses the moderation
+// accent badge, a plain delete stays neutral.
+function actionBadge(action) {
+  if (action === "timeout") return el("span", { class: "badge act-timeout" }, "Timed out");
+  return el("span", { class: "badge" }, "Deleted");
+}
+
+// wordChip renders a banned term with an inline remove button. The DELETE
+// returns the updated list, which re-renders the whole set.
+function wordChip(card, word) {
+  const chip = el("span", { class: "word-chip" }, el("span", {}, word));
+  const x = el("button", { class: "word-x", title: "Remove", "aria-label": `Remove ${word}` }, "×");
+  x.onclick = async () => {
+    x.disabled = true;
+    try {
+      const res = await api("DELETE", `/api/guilds/${state.guildID}/automod/words`, { word });
+      toast(`Removed “${word}”`);
+      renderWordList(card, res.words);
+    } catch (e) { toast(e.message, true); x.disabled = false; }
+  };
+  chip.appendChild(x);
+  return chip;
+}
+
+function renderWordList(card, words) {
+  const list = $(".word-list", card);
+  if (!list) return;
+  list.replaceChildren();
+  if (!words.length) {
+    list.appendChild(el("span", { class: "muted" }, "No banned words yet."));
+    return;
+  }
+  for (const w of words) list.appendChild(wordChip(card, w));
+}
+
+async function renderAutomodWords(card) {
+  card.replaceChildren(spinner());
+  let res;
+  try {
+    res = await api("GET", `/api/guilds/${state.guildID}/automod/words`);
+  } catch (e) {
+    card.replaceChildren(emptyState("ban", "Couldn't load banned words", e.message));
+    return;
+  }
+  const input = el("input", { class: "input", type: "text", placeholder: "Add a word…", style: "flex:1;min-width:160px" });
+  const add = el("button", { class: "btn btn-primary" }, "Add");
+  const submit = async () => {
+    const word = input.value.trim();
+    if (!word) { toast("Type a word first", true); return; }
+    add.disabled = true;
+    try {
+      const r = await api("POST", `/api/guilds/${state.guildID}/automod/words`, { word });
+      input.value = "";
+      renderWordList(card, r.words);
+    } catch (e) {
+      toast(e.message, true);
+    } finally {
+      add.disabled = false;
+      input.focus();
+    }
+  };
+  add.onclick = submit;
+  input.onkeydown = (e) => { if (e.key === "Enter") submit(); };
+
+  card.replaceChildren(
+    el("div", { class: "card-head" }, el("h2", {}, "Banned words"),
+      el("div", { class: "sub" }, "Messages containing any of these are deleted when the word filter is on.")),
+    el("div", { class: "toolbar", style: "margin-top:16px" }, input, add),
+    el("div", { class: "word-list", style: "margin-top:16px" }));
+  renderWordList(card, res.words);
+}
+
+async function renderAutomodViolations(card) {
+  card.replaceChildren(spinner());
+  let page;
+  try {
+    const qs = new URLSearchParams({ limit: String(VIOLATION_LIMIT), offset: String(state.am.offset) });
+    page = await api("GET", `/api/guilds/${state.guildID}/automod/violations?${qs}`);
+  } catch (e) {
+    card.replaceChildren(emptyState("scroll", "Couldn't load violations", e.message));
+    return;
+  }
+  card.replaceChildren(el("div", { class: "card-head" }, el("h2", {}, "Violation log"),
+    el("div", { class: "sub" }, `${page.total} recorded`)));
+
+  if (!page.violations.length) {
+    card.appendChild(emptyState("shield", "No violations", "Enforced filter actions show up here."));
+    return;
+  }
+  const body = el("tbody");
+  for (const v of page.violations) {
+    const when = new Date(v.created_at);
+    body.appendChild(el("tr", {},
+      el("td", {}, userCell(v.user_name, v.user_id)),
+      el("td", { class: "muted" }, v.channel_id ? channelName(v.channel_id) : "—"),
+      el("td", {}, el("span", { class: "badge" }, FILTER_LABELS[v.filter] || v.filter)),
+      el("td", {}, actionBadge(v.action)),
+      el("td", { class: "muted" }, v.detail || "—"),
+      el("td", { class: "muted", style: "white-space:nowrap" }, isNaN(when) ? "—" : when.toLocaleString())));
+  }
+  card.appendChild(el("div", { class: "table-wrap" }, el("table", { class: "table" },
+    el("thead", {}, el("tr", {},
+      el("th", {}, "Member"), el("th", {}, "Channel"), el("th", {}, "Filter"),
+      el("th", {}, "Action"), el("th", {}, "Trigger"), el("th", {}, "When"))),
+    body)));
+  card.appendChild(pager(state.am.offset, page.violations.length, page.total, VIOLATION_LIMIT,
+    (o) => { state.am.offset = o; renderAutomodViolations(card); }));
+}
+
+async function pageAutomod(root) {
+  await loadGuildData(state.guildID);
+  const wordsCard = el("div", { class: "card" });
+  const logCard = el("div", { class: "card" });
+  root.replaceChildren(
+    pageHead("AutoMod", "Banned words and the enforcement log", "ban"),
+    wordsCard, logCard);
+  await renderAutomodWords(wordsCard);
+  await renderAutomodViolations(logCard);
+}
+
 /* ------------------------------------------------------------------ router */
 
 function currentRoute() {
@@ -1300,6 +1426,7 @@ function currentRoute() {
   if (parts[0] === "leveling") return { kind: "leveling" };
   if (parts[0] === "tickets") return { kind: "tickets" };
   if (parts[0] === "giveaways") return { kind: "giveaways" };
+  if (parts[0] === "automod") return { kind: "automod" };
   if (parts[0] === "audit") return { kind: "audit" };
   return { kind: "overview" };
 }
@@ -1316,6 +1443,7 @@ async function router() {
   if (route.kind === "leveling") return pageLeveling(root);
   if (route.kind === "tickets") return pageTickets(root);
   if (route.kind === "giveaways") return pageGiveaways(root);
+  if (route.kind === "automod") return pageAutomod(root);
   if (route.kind === "audit") return pageAudit(root);
   return pageOverview(root);
 }
@@ -1331,6 +1459,7 @@ function markActiveNav(route) {
       (route.kind === "leveling" && r === "leveling") ||
       (route.kind === "tickets" && r === "tickets") ||
       (route.kind === "giveaways" && r === "giveaways") ||
+      (route.kind === "automod" && r === "automod") ||
       (route.kind === "module" && r === `m/${route.name}`);
     a.classList.toggle("active", active);
   }
@@ -1350,6 +1479,7 @@ const CONSOLES = [
   { key: "leveling", route: "leveling", label: "Leveling", icon: "trophy" },
   { key: "tickets", route: "tickets", label: "Tickets", icon: "ticket" },
   { key: "giveaways", route: "giveaways", label: "Giveaways", icon: "gift" },
+  { key: "automod", route: "automod", label: "AutoMod", icon: "ban" },
 ];
 
 async function buildNav() {
@@ -1463,6 +1593,7 @@ async function selectGuild(id) {
   state.lvl = { offset: 0 };
   state.tk = { status: "active", offset: 0 };
   state.gw = { offset: 0 };
+  state.am = { offset: 0 };
   try {
     state.features = await api("GET", `/api/guilds/${id}/features`);
   } catch {
