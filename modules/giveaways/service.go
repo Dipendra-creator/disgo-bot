@@ -147,6 +147,17 @@ func (s *Service) ListActive(ctx context.Context, guildID string) ([]Giveaway, e
 	return s.repo.listActive(ctx, pid(guildID))
 }
 
+// List returns a page of a guild's giveaways (active and ended) with the total
+// count. Used by the web dashboard's giveaway manager.
+func (s *Service) List(ctx context.Context, guildID int64, limit, offset int) ([]Giveaway, int, error) {
+	return s.repo.listForGuild(ctx, guildID, limit, offset)
+}
+
+// EntryCount returns how many members have entered a giveaway.
+func (s *Service) EntryCount(ctx context.Context, giveawayID int64) (int, error) {
+	return s.repo.countEntries(ctx, giveawayID)
+}
+
 // endGiveaway draws winners, persists the result, updates the panel and pings
 // the winners in the channel. Shared by manual End and the sweeper.
 func (s *Service) endGiveaway(ctx context.Context, g *Giveaway) ([]string, error) {

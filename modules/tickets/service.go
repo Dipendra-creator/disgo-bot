@@ -66,6 +66,51 @@ func (s *Service) TicketByChannel(ctx context.Context, channelID string) (*Ticke
 	return s.repo.byChannel(ctx, pid(channelID))
 }
 
+// ListTickets returns a page of a guild's tickets with the total match count.
+// Used by the web dashboard's ticket browser.
+func (s *Service) ListTickets(ctx context.Context, guildID int64, status string, limit, offset int) ([]Ticket, int, error) {
+	return s.repo.listTickets(ctx, guildID, status, limit, offset)
+}
+
+// TicketByID resolves a guild ticket by its local ID (ErrNoTicket when absent).
+func (s *Service) TicketByID(ctx context.Context, guildID, id int64) (*Ticket, error) {
+	return s.repo.byID(ctx, guildID, id)
+}
+
+// ClaimByID assigns a guild ticket to a claimer by ticket ID, enforcing the same
+// guards as the in-Discord claim button. Used by the web dashboard.
+func (s *Service) ClaimByID(ctx context.Context, guildID, id, claimerID int64) (*Ticket, error) {
+	t, err := s.repo.byID(ctx, guildID, id)
+	if err != nil {
+		return nil, err
+	}
+	if t.Status == StatusClosed {
+		return nil, shared.UserErr("This ticket is closed.")
+	}
+	if t.ClaimerID != 0 {
+		return nil, shared.UserErr("This ticket is already claimed by <@%s>.", sid(t.ClaimerID))
+	}
+	if err := s.repo.claim(ctx, t.ChannelID, claimerID); err != nil {
+		return nil, err
+	}
+	t.ClaimerID = claimerID
+	t.Status = StatusClaimed
+	return t, nil
+}
+
+// CloseByID closes a guild ticket by its local ID, reusing the standard close
+// path (transcript log + channel delete). Used by the web dashboard.
+func (s *Service) CloseByID(ctx context.Context, guildID, id int64, closer *discordgo.User, reason string) (*Ticket, error) {
+	t, err := s.repo.byID(ctx, guildID, id)
+	if err != nil {
+		return nil, err
+	}
+	if t.Status == StatusClosed {
+		return nil, shared.UserErr("This ticket is already closed.")
+	}
+	return s.CloseTicket(ctx, sid(guildID), sid(t.ChannelID), closer, reason)
+}
+
 // PostPanel publishes a ticket panel (a Components-v2 message with an Open
 // button) to a channel and records its location.
 func (s *Service) PostPanel(ctx context.Context, guildID, channelID, title, desc string) error {

@@ -81,6 +81,41 @@ func (r *repo) close(ctx context.Context, channelID, closedBy int64, reason stri
 	return err
 }
 
+// listTickets returns a page of a guild's tickets, newest first, optionally
+// narrowed by status ("active" = open or claimed, "closed", or "" for any),
+// along with the total match count (ignoring the page window) for pagination.
+func (r *repo) listTickets(ctx context.Context, guildID int64, status string, limit, offset int) ([]Ticket, int, error) {
+	var ts []Ticket
+	q := r.db.NewSelect().Model(&ts).Where("guild_id = ?", guildID)
+	switch status {
+	case "active":
+		q = q.Where("status <> ?", StatusClosed)
+	case StatusClosed:
+		q = q.Where("status = ?", StatusClosed)
+	}
+	total, err := q.Order("number DESC").Limit(limit).Offset(offset).ScanAndCount(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	return ts, total, nil
+}
+
+// byID fetches a ticket by its local ID, scoped to a guild. It returns
+// ErrNoTicket when no such ticket exists in the guild.
+func (r *repo) byID(ctx context.Context, guildID, id int64) (*Ticket, error) {
+	t := new(Ticket)
+	err := r.db.NewSelect().Model(t).
+		Where("id = ? AND guild_id = ?", id, guildID).
+		Limit(1).Scan(ctx)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNoTicket
+	}
+	if err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
 func (r *repo) getSettings(ctx context.Context, guildID int64) (*Settings, error) {
 	s := new(Settings)
 	err := r.db.NewSelect().Model(s).

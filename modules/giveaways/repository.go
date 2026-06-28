@@ -115,6 +115,19 @@ func (r *repo) listActive(ctx context.Context, guildID int64) ([]Giveaway, error
 	return rows, err
 }
 
+// listForGuild returns a page of a guild's giveaways (active and ended), newest
+// first, with the total count (ignoring the page window) for pagination.
+func (r *repo) listForGuild(ctx context.Context, guildID int64, limit, offset int) ([]Giveaway, int, error) {
+	var rows []Giveaway
+	total, err := r.db.NewSelect().Model(&rows).
+		Where("guild_id = ?", guildID).
+		Order("created_at DESC").Limit(limit).Offset(offset).ScanAndCount(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	return rows, total, nil
+}
+
 // due returns active giveaways whose timer has expired.
 func (r *repo) due(ctx context.Context, now time.Time) ([]Giveaway, error) {
 	var rows []Giveaway

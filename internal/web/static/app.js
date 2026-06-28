@@ -125,6 +125,8 @@ const state = {
   mod: { target: "", action: "", offset: 0 }, // moderation console filter/pager state
   econ: { offset: 0 }, // economy leaderboard pager state
   lvl: { offset: 0 }, // leveling leaderboard pager state
+  tk: { status: "active", offset: 0 }, // tickets console filter/pager state
+  gw: { offset: 0 }, // giveaways pager state
 };
 
 const TEXT_CHANNEL_TYPES = new Set([0, 5, 15]); // text, announcement, forum
@@ -163,6 +165,28 @@ function roleSelect(currentID, withNone) {
   if (currentID && !matched) {
     const opt = el("option", { value: currentID, selected: true }, `Unknown role (${currentID})`);
     sel.appendChild(opt);
+  }
+  return sel;
+}
+
+// channelSelect builds a native <select> of text channels grouped by category,
+// preselecting currentID (kept even if it's now stale). No "none" option — a
+// channel is required by its callers.
+function channelSelect(currentID) {
+  const sel = el("select", { class: "input" });
+  sel.appendChild(el("option", { value: "" }, "— Pick a channel —"));
+  let matched = false;
+  for (const g of textChannelGroups()) {
+    const parent = g.category ? el("optgroup", { label: g.category }) : sel;
+    for (const c of g.channels) {
+      const opt = el("option", { value: c.id }, "# " + c.name);
+      if (c.id === currentID) { opt.selected = true; matched = true; }
+      parent.appendChild(opt);
+    }
+    if (g.category) sel.appendChild(parent);
+  }
+  if (currentID && !matched) {
+    sel.appendChild(el("option", { value: currentID, selected: true }, `Unknown (${currentID})`));
   }
   return sel;
 }
@@ -661,6 +685,23 @@ function memberCell(m) {
   return el("td", {}, el("span", { class: "chip" }, m.user_id));
 }
 
+// userCell renders a name (when known) over a muted id, or a bare id chip. The
+// caller wraps it in a <td>.
+function userCell(name, id) {
+  if (name) {
+    return el("div", {},
+      el("div", {}, name),
+      el("div", { class: "muted mono", style: "font-size:11px" }, id));
+  }
+  return el("span", { class: "chip" }, id);
+}
+
+// channelName maps a channel id to its "# name" from the cache, or the raw id.
+function channelName(id) {
+  const c = state.channels.find((x) => x.id === id);
+  return c ? "# " + c.name : id;
+}
+
 const ECON_LIMIT = 25;
 
 async function renderEconLeaderboard(card) {
@@ -948,6 +989,306 @@ async function pageLeveling(root) {
   await Promise.all([renderLevelLeaderboard(lb), renderRewards(rw)]);
 }
 
+/* -------------------------------------------------- tickets console (Inc4) */
+
+const TICKET_LIMIT = 25;
+
+function ticketStatusBadge(s) {
+  const cls = { open: "tk-open", claimed: "tk-claimed", closed: "tk-closed" }[s] || "";
+  const label = { open: "Open", claimed: "Claimed", closed: "Closed" }[s] || s;
+  return el("span", { class: "badge " + cls }, label);
+}
+
+// reasonDialog shows a modal with a single text field and resolves the trimmed
+// value, or null when cancelled.
+function reasonDialog(title, message, placeholder, danger) {
+  return new Promise((resolve) => {
+    const input = el("input", { class: "input", type: "text", placeholder, style: "width:100%;margin-top:12px" });
+    const close = (v) => { overlay.remove(); resolve(v); };
+    const overlay = el("div", { class: "modal-overlay" },
+      el("div", { class: "modal" },
+        el("h3", {}, title),
+        el("p", { class: "muted" }, message),
+        input,
+        el("div", { class: "modal-actions" },
+          el("button", { class: "btn", onClick: () => close(null) }, "Cancel"),
+          el("button", { class: "btn " + (danger ? "btn-danger" : "btn-primary"), onClick: () => close(input.value.trim()) }, "Confirm"))));
+    overlay.onclick = (e) => { if (e.target === overlay) close(null); };
+    input.onkeydown = (e) => { if (e.key === "Enter") close(input.value.trim()); };
+    document.body.appendChild(overlay);
+    setTimeout(() => input.focus(), 0);
+  });
+}
+
+// transcriptModal renders a ticket's recent messages in a scrollable panel.
+function transcriptModal(tr) {
+  const lines = tr.lines || [];
+  const log = el("div", { class: "transcript" });
+  if (!lines.length) {
+    log.appendChild(el("div", { class: "muted" }, "No messages captured."));
+  } else {
+    for (const ln of lines) {
+      const when = new Date(ln.timestamp);
+      log.appendChild(el("div", { class: "tr-line" },
+        el("span", { class: "tr-time muted mono" }, isNaN(when) ? "" : when.toLocaleTimeString()),
+        el("span", { class: "tr-author" }, ln.author || "unknown"),
+        el("span", { class: "tr-content" }, ln.content || "")));
+    }
+  }
+  const close = () => overlay.remove();
+  const overlay = el("div", { class: "modal-overlay" },
+    el("div", { class: "modal modal-lg" },
+      el("h3", {}, `Ticket #${tr.ticket.number} · transcript`),
+      el("p", { class: "muted" }, tr.ticket.subject || ""),
+      log,
+      el("div", { class: "modal-actions" },
+        el("button", { class: "btn btn-primary", onClick: close }, "Close"))));
+  overlay.onclick = (e) => { if (e.target === overlay) close(); };
+  document.body.appendChild(overlay);
+}
+
+function ticketRow(card, t) {
+  const actions = [];
+  if (t.status !== "closed") {
+    const view = el("button", { class: "btn btn-ghost btn-sm", title: "View transcript" }, icon("scroll"));
+    view.onclick = async () => {
+      try {
+        const tr = await api("GET", `/api/guilds/${state.guildID}/tickets/${t.id}/transcript`);
+        transcriptModal(tr);
+      } catch (e) { toast(e.message, true); }
+    };
+    actions.push(view);
+    if (!t.claimer_id) {
+      const claim = el("button", { class: "btn btn-ghost btn-sm", title: "Claim" }, icon("users"));
+      claim.onclick = async () => {
+        try {
+          await api("POST", `/api/guilds/${state.guildID}/tickets/${t.id}/claim`);
+          toast(`Claimed #${t.number}`);
+          renderTickets(card);
+        } catch (e) { toast(e.message, true); }
+      };
+      actions.push(claim);
+    }
+    const close = el("button", { class: "btn btn-ghost btn-sm btn-danger", title: "Close" }, icon("ban"));
+    close.onclick = async () => {
+      const reason = await reasonDialog(`Close ticket #${t.number}?`,
+        "This deletes the channel and logs a transcript.", "Reason (optional)", true);
+      if (reason === null) return;
+      try {
+        await api("POST", `/api/guilds/${state.guildID}/tickets/${t.id}/close`, { reason });
+        toast(`Closed #${t.number}`);
+        renderTickets(card);
+      } catch (e) { toast(e.message, true); }
+    };
+    actions.push(close);
+  }
+  const when = new Date(t.created_at);
+  return el("tr", {},
+    el("td", {}, el("span", { class: "chip" }, "#" + t.number)),
+    el("td", {}, t.subject || el("span", { class: "muted" }, "—")),
+    el("td", {}, userCell(t.opener_name, t.opener_id)),
+    el("td", {}, t.claimer_id ? userCell(t.claimer_name, t.claimer_id) : el("span", { class: "muted" }, "—")),
+    el("td", {}, ticketStatusBadge(t.status)),
+    el("td", { class: "muted" }, isNaN(when) ? "—" : when.toLocaleDateString()),
+    el("td", { style: "text-align:right;white-space:nowrap" }, ...actions));
+}
+
+async function renderTickets(card) {
+  card.replaceChildren(spinner());
+
+  const mkTab = (key, label) => {
+    const b = el("button", { class: "tab" + (state.tk.status === key ? " active" : "") }, label);
+    b.onclick = () => {
+      if (state.tk.status === key) return;
+      state.tk.status = key;
+      state.tk.offset = 0;
+      renderTickets(card);
+    };
+    return b;
+  };
+  const tabs = el("div", { class: "tabs" }, mkTab("active", "Active"), mkTab("closed", "Closed"), mkTab("", "All"));
+
+  let page;
+  try {
+    const qs = new URLSearchParams({ limit: String(TICKET_LIMIT), offset: String(state.tk.offset) });
+    if (state.tk.status) qs.set("status", state.tk.status);
+    page = await api("GET", `/api/guilds/${state.guildID}/tickets?${qs}`);
+  } catch (e) {
+    card.replaceChildren(emptyState("ticket", "Couldn't load tickets", e.message));
+    return;
+  }
+
+  card.replaceChildren(
+    el("div", { class: "card-head" }, el("h2", {}, "Tickets"),
+      el("div", { class: "sub" }, `${page.total} total`)),
+    el("div", { class: "toolbar", style: "margin-top:16px" }, tabs));
+
+  if (!page.tickets.length) {
+    card.appendChild(emptyState("ticket", "No tickets", "Tickets opened in this server show up here."));
+    return;
+  }
+  const body = el("tbody");
+  for (const t of page.tickets) body.appendChild(ticketRow(card, t));
+  card.appendChild(el("div", { class: "table-wrap" }, el("table", { class: "table" },
+    el("thead", {}, el("tr", {},
+      el("th", {}, "#"), el("th", {}, "Subject"), el("th", {}, "Opener"),
+      el("th", {}, "Claimed by"), el("th", {}, "Status"), el("th", {}, "Opened"), el("th", {}, ""))),
+    body)));
+  card.appendChild(pager(state.tk.offset, page.tickets.length, page.total, TICKET_LIMIT,
+    (o) => { state.tk.offset = o; renderTickets(card); }));
+}
+
+async function pageTickets(root) {
+  await loadGuildData(state.guildID);
+  const card = el("div", { class: "card" });
+  root.replaceChildren(pageHead("Tickets", "Browse and manage support tickets", "ticket"), card);
+  await renderTickets(card);
+}
+
+/* ------------------------------------------------ giveaways console (Inc4) */
+
+const GW_LIMIT = 25;
+const GW_UNITS = [
+  { label: "minutes", ms: 60000 },
+  { label: "hours", ms: 3600000 },
+  { label: "days", ms: 86400000 },
+];
+
+function giveawayCreateCard(listCard) {
+  const channel = channelSelect("");
+  channel.style.maxWidth = "240px";
+  const prize = el("input", { class: "input", type: "text", placeholder: "Prize", style: "flex:1;min-width:160px" });
+  const winners = el("input", { class: "input", type: "number", min: "1", value: "1", style: "max-width:80px" });
+  const durVal = el("input", { class: "input", type: "number", min: "1", value: "24", style: "max-width:80px" });
+  const durUnit = el("select", { class: "input", style: "max-width:120px" },
+    ...GW_UNITS.map((u, i) => {
+      const o = el("option", { value: String(u.ms) }, u.label);
+      if (i === 1) o.selected = true; // default to hours
+      return o;
+    }));
+
+  const create = el("button", { class: "btn btn-primary" }, "Create");
+  create.onclick = async () => {
+    const body = {
+      channel_id: channel.value,
+      prize: prize.value.trim(),
+      winners: Math.max(1, Number(winners.value) || 1),
+      duration_ms: Math.max(1, Number(durVal.value) || 1) * Number(durUnit.value),
+    };
+    if (!body.channel_id) { toast("Pick a channel", true); return; }
+    if (!body.prize) { toast("Prize is required", true); return; }
+    create.disabled = true;
+    try {
+      await api("POST", `/api/guilds/${state.guildID}/giveaways`, body);
+      toast(`Started giveaway for “${body.prize}”`);
+      prize.value = "";
+      state.gw.offset = 0;
+      renderGiveaways(listCard);
+    } catch (e) {
+      toast(e.message, true);
+    } finally {
+      create.disabled = false;
+    }
+  };
+
+  return el("div", { class: "card" },
+    el("div", { class: "card-head" }, el("h2", {}, "New giveaway"),
+      el("div", { class: "sub" }, "Posts an entry panel members join with a button.")),
+    el("div", { class: "toolbar", style: "margin-top:16px" },
+      el("label", { class: "dur" }, el("span", { class: "muted" }, "Channel"), channel),
+      prize,
+      el("label", { class: "dur" }, el("span", { class: "muted" }, "Winners"), winners),
+      el("label", { class: "dur" }, el("span", { class: "muted" }, "Ends in"), durVal, durUnit),
+      create));
+}
+
+function giveawayRow(card, g) {
+  const actions = [];
+  if (!g.ended) {
+    const end = el("button", { class: "btn btn-ghost btn-sm", title: "End now" }, icon("clock"));
+    end.onclick = async () => {
+      if (!(await confirmDialog("End giveaway?", `Draw winners for “${g.prize}” now.`, false))) return;
+      try {
+        await api("POST", `/api/guilds/${state.guildID}/giveaways/${g.id}/end`);
+        toast("Giveaway ended");
+        renderGiveaways(card);
+      } catch (e) { toast(e.message, true); }
+    };
+    actions.push(end);
+  } else {
+    const reroll = el("button", { class: "btn btn-ghost btn-sm", title: "Reroll winners" }, icon("rocket"));
+    reroll.onclick = async () => {
+      if (!(await confirmDialog("Reroll winners?", `Draw fresh winners for “${g.prize}”.`, false))) return;
+      try {
+        await api("POST", `/api/guilds/${state.guildID}/giveaways/${g.id}/reroll`, { winners: 0 });
+        toast("Winners rerolled");
+        renderGiveaways(card);
+      } catch (e) { toast(e.message, true); }
+    };
+    actions.push(reroll);
+  }
+
+  let winnersCell;
+  if (!g.ended) {
+    winnersCell = el("td", { class: "muted" }, `${g.winners} target`);
+  } else if (g.winner_ids && g.winner_ids.length) {
+    winnersCell = el("td", {}, ...g.winner_ids.map((w) =>
+      el("span", { class: "chip", style: "margin:0 4px 4px 0" }, w)));
+  } else {
+    winnersCell = el("td", { class: "muted" }, "No winners");
+  }
+
+  const ends = new Date(g.ends_at);
+  return el("tr", {},
+    el("td", {}, g.prize),
+    el("td", { class: "muted" }, channelName(g.channel_id)),
+    el("td", { style: "text-align:right" }, fmtNum(g.entries)),
+    el("td", {}, g.ended
+      ? el("span", { class: "badge tk-closed" }, "Ended")
+      : el("span", { class: "badge tk-open" }, "Active")),
+    winnersCell,
+    el("td", { class: "muted" }, g.ended ? "—" : (isNaN(ends) ? "—" : ends.toLocaleString())),
+    el("td", { style: "text-align:right;white-space:nowrap" }, ...actions));
+}
+
+async function renderGiveaways(card) {
+  card.replaceChildren(spinner());
+  let page;
+  try {
+    const qs = new URLSearchParams({ limit: String(GW_LIMIT), offset: String(state.gw.offset) });
+    page = await api("GET", `/api/guilds/${state.guildID}/giveaways?${qs}`);
+  } catch (e) {
+    card.replaceChildren(emptyState("gift", "Couldn't load giveaways", e.message));
+    return;
+  }
+  card.replaceChildren(el("div", { class: "card-head" }, el("h2", {}, "Giveaways"),
+    el("div", { class: "sub" }, `${page.total} total`)));
+
+  if (!page.giveaways.length) {
+    card.appendChild(emptyState("gift", "No giveaways", "Create one above to get started."));
+    return;
+  }
+  const body = el("tbody");
+  for (const g of page.giveaways) body.appendChild(giveawayRow(card, g));
+  card.appendChild(el("div", { class: "table-wrap" }, el("table", { class: "table" },
+    el("thead", {}, el("tr", {},
+      el("th", {}, "Prize"), el("th", {}, "Channel"),
+      el("th", { style: "text-align:right" }, "Entries"), el("th", {}, "Status"),
+      el("th", {}, "Winners"), el("th", {}, "Ends"), el("th", {}, ""))),
+    body)));
+  card.appendChild(pager(state.gw.offset, page.giveaways.length, page.total, GW_LIMIT,
+    (o) => { state.gw.offset = o; renderGiveaways(card); }));
+}
+
+async function pageGiveaways(root) {
+  await loadGuildData(state.guildID);
+  const listCard = el("div", { class: "card" });
+  root.replaceChildren(
+    pageHead("Giveaways", "Create and manage prize draws", "gift"),
+    giveawayCreateCard(listCard), listCard);
+  await renderGiveaways(listCard);
+}
+
 /* ------------------------------------------------------------------ router */
 
 function currentRoute() {
@@ -957,6 +1298,8 @@ function currentRoute() {
   if (parts[0] === "moderation") return { kind: "moderation" };
   if (parts[0] === "economy") return { kind: "economy" };
   if (parts[0] === "leveling") return { kind: "leveling" };
+  if (parts[0] === "tickets") return { kind: "tickets" };
+  if (parts[0] === "giveaways") return { kind: "giveaways" };
   if (parts[0] === "audit") return { kind: "audit" };
   return { kind: "overview" };
 }
@@ -971,6 +1314,8 @@ async function router() {
   if (route.kind === "moderation") return pageModeration(root);
   if (route.kind === "economy") return pageEconomy(root);
   if (route.kind === "leveling") return pageLeveling(root);
+  if (route.kind === "tickets") return pageTickets(root);
+  if (route.kind === "giveaways") return pageGiveaways(root);
   if (route.kind === "audit") return pageAudit(root);
   return pageOverview(root);
 }
@@ -984,6 +1329,8 @@ function markActiveNav(route) {
       (route.kind === "moderation" && r === "moderation") ||
       (route.kind === "economy" && r === "economy") ||
       (route.kind === "leveling" && r === "leveling") ||
+      (route.kind === "tickets" && r === "tickets") ||
+      (route.kind === "giveaways" && r === "giveaways") ||
       (route.kind === "module" && r === `m/${route.name}`);
     a.classList.toggle("active", active);
   }
@@ -1001,6 +1348,8 @@ const CONSOLES = [
   { key: "moderation", route: "moderation", label: "Moderation", icon: "shield" },
   { key: "economy", route: "economy", label: "Economy", icon: "coins" },
   { key: "leveling", route: "leveling", label: "Leveling", icon: "trophy" },
+  { key: "tickets", route: "tickets", label: "Tickets", icon: "ticket" },
+  { key: "giveaways", route: "giveaways", label: "Giveaways", icon: "gift" },
 ];
 
 async function buildNav() {
@@ -1112,6 +1461,8 @@ async function selectGuild(id) {
   state.mod = { target: "", action: "", offset: 0 };
   state.econ = { offset: 0 };
   state.lvl = { offset: 0 };
+  state.tk = { status: "active", offset: 0 };
+  state.gw = { offset: 0 };
   try {
     state.features = await api("GET", `/api/guilds/${id}/features`);
   } catch {

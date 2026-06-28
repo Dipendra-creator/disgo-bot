@@ -39,6 +39,8 @@ type Server struct {
 	moderation shared.Moderation // moderation console seam, if a module exposes it
 	economy    shared.Economy    // economy console seam, if a module exposes it
 	leveling   shared.Leveling   // leveling console seam, if a module exposes it
+	tickets    shared.Tickets    // tickets console seam, if a module exposes it
+	giveaways  shared.Giveaways  // giveaways console seam, if a module exposes it
 
 	http *http.Server
 }
@@ -91,6 +93,12 @@ func New(deps *shared.Deps, modules []shared.Module) (*Server, error) {
 		if lvl, ok := m.(shared.Leveling); ok {
 			s.leveling = lvl
 		}
+		if tk, ok := m.(shared.Tickets); ok {
+			s.tickets = tk
+		}
+		if gw, ok := m.(shared.Giveaways); ok {
+			s.giveaways = gw
+		}
 	}
 	s.http = &http.Server{
 		Addr:              cfg.Addr,
@@ -135,6 +143,18 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/guilds/{id}/leveling/rewards", s.requireAuth(s.requireGuildManage(s.handleLevelRewards)))
 	mux.HandleFunc("PUT /api/guilds/{id}/leveling/rewards/{level}", s.requireAuth(s.requireGuildManage(s.handleLevelRewardSet)))
 	mux.HandleFunc("DELETE /api/guilds/{id}/leveling/rewards/{level}", s.requireAuth(s.requireGuildManage(s.handleLevelRewardDelete)))
+
+	// Tickets console — ticket browser + claim/close + transcript view.
+	mux.HandleFunc("GET /api/guilds/{id}/tickets", s.requireAuth(s.requireGuildManage(s.handleTickets)))
+	mux.HandleFunc("GET /api/guilds/{id}/tickets/{ticket}/transcript", s.requireAuth(s.requireGuildManage(s.handleTicketTranscript)))
+	mux.HandleFunc("POST /api/guilds/{id}/tickets/{ticket}/claim", s.requireAuth(s.requireGuildManage(s.handleTicketClaim)))
+	mux.HandleFunc("POST /api/guilds/{id}/tickets/{ticket}/close", s.requireAuth(s.requireGuildManage(s.handleTicketClose)))
+
+	// Giveaways console — manager: list/create/end/reroll.
+	mux.HandleFunc("GET /api/guilds/{id}/giveaways", s.requireAuth(s.requireGuildManage(s.handleGiveaways)))
+	mux.HandleFunc("POST /api/guilds/{id}/giveaways", s.requireAuth(s.requireGuildManage(s.handleGiveawayCreate)))
+	mux.HandleFunc("POST /api/guilds/{id}/giveaways/{gw}/end", s.requireAuth(s.requireGuildManage(s.handleGiveawayEnd)))
+	mux.HandleFunc("POST /api/guilds/{id}/giveaways/{gw}/reroll", s.requireAuth(s.requireGuildManage(s.handleGiveawayReroll)))
 
 	// Feature discovery — which management consoles the dashboard should show.
 	mux.HandleFunc("GET /api/guilds/{id}/features", s.requireAuth(s.requireGuildManage(s.handleFeatures)))

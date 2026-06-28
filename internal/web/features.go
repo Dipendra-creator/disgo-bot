@@ -5,12 +5,14 @@ import "net/http"
 // features reports which management consoles the dashboard should surface for a
 // guild. Each flag is true when a registered module exposes the matching
 // transport-agnostic seam. The frontend builds its "Management" nav from this so
-// a console never appears without a backend behind it. Increments 4–5 extend
-// this struct as their seams land.
+// a console never appears without a backend behind it. Increment 5 extends this
+// struct as its seam lands.
 type features struct {
 	Moderation bool `json:"moderation"`
 	Economy    bool `json:"economy"`
 	Leveling   bool `json:"leveling"`
+	Tickets    bool `json:"tickets"`
+	Giveaways  bool `json:"giveaways"`
 }
 
 // handleFeatures serves GET /api/guilds/{id}/features.
@@ -19,5 +21,7 @@ func (s *Server) handleFeatures(w http.ResponseWriter, _ *http.Request, _ *Sessi
 		Moderation: s.moderation != nil,
 		Economy:    s.economy != nil,
 		Leveling:   s.leveling != nil,
+		Tickets:    s.tickets != nil,
+		Giveaways:  s.giveaways != nil,
 	})
 }

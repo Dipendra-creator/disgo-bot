@@ -227,6 +227,27 @@ select.input { appearance: none; cursor: pointer;
 .modal p { font-size: 13.5px; line-height: 1.5; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
 
+/* --- tickets + giveaways consoles (Inc4) --- */
+
+/* Segmented tab control for the ticket status filter. */
+.tabs { display: inline-flex; gap: 2px; background: var(--raised); border: 1px solid var(--border); border-radius: var(--r-md); padding: 3px; }
+.tab { font: 500 13px var(--font); padding: 5px 12px; border-radius: var(--r-sm); background: transparent; border: 0; color: var(--text-2); cursor: pointer; transition: background 0.1s, color 0.1s; }
+.tab:hover { color: var(--text); }
+.tab.active { background: var(--overlay); color: var(--text); }
+
+/* Status badges — tinted hairlines, mirroring the moderation action badges. */
+.tk-open { color: var(--success); border-color: color-mix(in srgb, var(--success) 35%, transparent); background: color-mix(in srgb, var(--success) 12%, transparent); }
+.tk-claimed { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); background: var(--accent-soft); }
+.tk-closed { color: var(--text-3); border-color: var(--border-2); background: var(--raised); }
+
+/* Transcript modal — wider shell + scrollable message log. */
+.modal-lg { max-width: 640px; }
+.transcript { margin-top: 16px; max-height: 52vh; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--r-sm); padding: 12px 14px; background: var(--canvas); display: flex; flex-direction: column; gap: 9px; }
+.tr-line { display: grid; grid-template-columns: auto auto 1fr; gap: 10px; align-items: baseline; font-size: 13px; }
+.tr-time { flex: none; white-space: nowrap; }
+.tr-author { font-weight: 600; color: var(--text); white-space: nowrap; }
+.tr-content { color: var(--text-2); min-width: 0; overflow-wrap: anywhere; }
+
 @media (max-width: 720px) {
   :root { --sb-w: 0px; }
   #sidebar { display: none; }
