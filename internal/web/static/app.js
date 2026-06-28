@@ -123,6 +123,8 @@ const state = {
   cacheKey: null, // guild whose roles/channels are loaded
   features: {}, // management consoles available for the current guild
   mod: { target: "", action: "", offset: 0 }, // moderation console filter/pager state
+  econ: { offset: 0 }, // economy leaderboard pager state
+  lvl: { offset: 0 }, // leveling leaderboard pager state
 };
 
 const TEXT_CHANNEL_TYPES = new Set([0, 5, 15]); // text, announcement, forum
@@ -134,6 +136,35 @@ function assignableRoles() {
 
 function roleByID(id) {
   return state.roles.find((r) => r.id === id);
+}
+
+// roleChip renders a role as a coloured swatch + name, or a muted dash when the
+// id is empty or the role is no longer in the guild.
+function roleChip(id) {
+  if (!id) return el("span", { class: "muted" }, "—");
+  const r = roleByID(id);
+  if (!r) return el("span", { class: "chip" }, id);
+  return el("span", { class: "role-chip" },
+    el("span", { class: "swatch", style: `background:${r.color || "#3f4147"}` }),
+    el("span", {}, r.name));
+}
+
+// roleSelect builds a native <select> of assignable roles with a "— None —"
+// option, preselecting currentID (kept even if it's now stale).
+function roleSelect(currentID, withNone) {
+  const sel = el("select", { class: "input" });
+  if (withNone !== false) sel.appendChild(el("option", { value: "" }, "— None —"));
+  let matched = false;
+  for (const r of assignableRoles()) {
+    const opt = el("option", { value: r.id }, r.name);
+    if (r.id === currentID) { opt.selected = true; matched = true; }
+    sel.appendChild(opt);
+  }
+  if (currentID && !matched) {
+    const opt = el("option", { value: currentID, selected: true }, `Unknown role (${currentID})`);
+    sel.appendChild(opt);
+  }
+  return sel;
 }
 
 // textChannelGroups returns [{category, channels:[…]}] for the channel picker,
@@ -603,18 +634,329 @@ async function pageModeration(root) {
   await renderCases(listCard, id, 25);
 }
 
-/* ------------------------------------------------------------------ router */
+/* -------------------------------------------------- economy console (Inc3) */
 
-const ROUTES = {
-  overview: (root) => pageOverview(root),
-  audit: (root) => pageAudit(root),
-};
+// pager renders a Prev/Next footer for an offset-based list. onGo(newOffset)
+// re-renders the caller.
+function pager(offset, shown, total, limit, onGo) {
+  const start = offset;
+  const end = offset + shown;
+  const prev = el("button", { class: "btn btn-sm" }, "Prev");
+  prev.disabled = start === 0;
+  prev.onclick = () => onGo(Math.max(0, start - limit));
+  const next = el("button", { class: "btn btn-sm" }, "Next");
+  next.disabled = end >= total;
+  next.onclick = () => onGo(start + limit);
+  return el("div", { class: "pager" },
+    el("span", { class: "muted" }, total ? `${start + 1}–${end} of ${total}` : "0 of 0"), prev, next);
+}
+
+// memberCell renders a leaderboard member as name (when known) over a muted id.
+function memberCell(m) {
+  if (m.username) {
+    return el("td", {},
+      el("div", {}, m.username),
+      el("div", { class: "muted mono", style: "font-size:11px" }, m.user_id));
+  }
+  return el("td", {}, el("span", { class: "chip" }, m.user_id));
+}
+
+const ECON_LIMIT = 25;
+
+async function renderEconLeaderboard(card) {
+  card.replaceChildren(spinner());
+  let page;
+  try {
+    const qs = new URLSearchParams({ limit: String(ECON_LIMIT), offset: String(state.econ.offset) });
+    page = await api("GET", `/api/guilds/${state.guildID}/economy/leaderboard?${qs}`);
+  } catch (e) {
+    card.replaceChildren(emptyState("coins", "Couldn't load leaderboard", e.message));
+    return;
+  }
+  const sym = page.symbol || "";
+  card.replaceChildren(el("div", { class: "card-head" },
+    el("h2", {}, "Net worth"),
+    el("div", { class: "sub" }, `${page.total} ranked · ${page.currency || "coins"}`)));
+
+  if (!page.members.length) {
+    card.appendChild(emptyState("coins", "No balances yet", "Members appear here once they earn currency."));
+    return;
+  }
+  const body = el("tbody");
+  page.members.forEach((m, i) => {
+    body.appendChild(el("tr", {},
+      el("td", { class: "muted" }, "#" + (state.econ.offset + i + 1)),
+      memberCell(m),
+      el("td", { style: "text-align:right" }, `${sym}${fmtNum(m.wallet)}`),
+      el("td", { style: "text-align:right" }, `${sym}${fmtNum(m.bank)}`),
+      el("td", { style: "text-align:right;font-weight:600" }, `${sym}${fmtNum(m.net)}`)));
+  });
+  card.appendChild(el("div", { class: "table-wrap" }, el("table", { class: "table" },
+    el("thead", {}, el("tr", {},
+      el("th", {}, "Rank"), el("th", {}, "Member"),
+      el("th", { style: "text-align:right" }, "Wallet"),
+      el("th", { style: "text-align:right" }, "Bank"),
+      el("th", { style: "text-align:right" }, "Net"))),
+    body)));
+  card.appendChild(pager(state.econ.offset, page.members.length, page.total, ECON_LIMIT,
+    (o) => { state.econ.offset = o; renderEconLeaderboard(card); }));
+}
+
+// shopItemForm builds the add/edit fields for a shop item. Returns
+// {node, read()} where read() yields the request body.
+function shopItemForm(item) {
+  const it = item || { name: "", description: "", price: 0, role_id: "", stock: -1 };
+  const name = el("input", { class: "input", type: "text", placeholder: "Name", value: it.name, style: "max-width:200px" });
+  const desc = el("input", { class: "input", type: "text", placeholder: "Description", value: it.description, style: "flex:1;min-width:180px" });
+  const price = el("input", { class: "input", type: "number", min: "0", value: String(it.price), style: "max-width:120px" });
+  const role = roleSelect(it.role_id, true);
+  role.style.maxWidth = "180px";
+
+  const unlimited = it.stock < 0;
+  const stock = el("input", { class: "input", type: "number", min: "0", value: String(unlimited ? 0 : it.stock), style: "max-width:90px" });
+  stock.disabled = unlimited;
+  const unl = el("input", { type: "checkbox" });
+  unl.checked = unlimited;
+  unl.onchange = () => { stock.disabled = unl.checked; };
+  const unlLabel = el("label", { class: "dur" }, unl, el("span", { class: "muted" }, "Unlimited"));
+
+  const node = el("div", { class: "toolbar" }, name, desc, price,
+    el("label", { class: "dur" }, el("span", { class: "muted" }, "Role"), role),
+    el("label", { class: "dur" }, el("span", { class: "muted" }, "Stock"), stock), unlLabel);
+  return {
+    node,
+    read: () => ({
+      name: name.value.trim(),
+      description: desc.value.trim(),
+      price: Math.max(0, Number(price.value) || 0),
+      role_id: role.value,
+      stock: unl.checked ? -1 : Math.max(0, Number(stock.value) || 0),
+    }),
+  };
+}
+
+async function renderShop(card) {
+  card.replaceChildren(spinner());
+  let page;
+  try {
+    page = await api("GET", `/api/guilds/${state.guildID}/economy/shop?limit=100`);
+  } catch (e) {
+    card.replaceChildren(emptyState("coins", "Couldn't load shop", e.message));
+    return;
+  }
+
+  const form = shopItemForm(null);
+  const addBtn = el("button", { class: "btn btn-primary" }, "Add item");
+  addBtn.onclick = async () => {
+    const body = form.read();
+    if (!body.name) { toast("Item name is required", true); return; }
+    addBtn.disabled = true;
+    try {
+      await api("POST", `/api/guilds/${state.guildID}/economy/shop`, body);
+      toast(`Added “${body.name}”`);
+      renderShop(card);
+    } catch (e) {
+      toast(e.message, true);
+      addBtn.disabled = false;
+    }
+  };
+
+  card.replaceChildren(
+    el("div", { class: "card-head" }, el("h2", {}, "Shop"),
+      el("div", { class: "sub" }, `${page.total} item${page.total === 1 ? "" : "s"}`)),
+    el("div", { class: "stack", style: "margin-top:16px" }, form.node,
+      el("div", { class: "card-actions", style: "margin-top:0;border:0;padding:0" }, addBtn)));
+
+  if (!page.items.length) {
+    card.appendChild(emptyState("coins", "No items", "Add a shop item above to get started."));
+    return;
+  }
+  const body = el("tbody");
+  for (const it of page.items) body.appendChild(shopRow(card, it));
+  card.appendChild(el("div", { class: "table-wrap" }, el("table", { class: "table" },
+    el("thead", {}, el("tr", {},
+      el("th", {}, "Item"), el("th", {}, "Description"),
+      el("th", { style: "text-align:right" }, "Price"), el("th", {}, "Role"),
+      el("th", {}, "Stock"), el("th", {}, ""))),
+    body)));
+}
+
+function shopRow(card, it) {
+  const edit = el("button", { class: "btn btn-ghost btn-sm", title: "Edit" }, icon("settings"));
+  edit.onclick = () => editShopItem(card, it);
+  const del = el("button", { class: "btn btn-ghost btn-sm btn-danger", title: "Delete" }, icon("ban"));
+  del.onclick = async () => {
+    if (!(await confirmDialog("Delete item?", `Remove “${it.name}” from the shop.`, true))) return;
+    try {
+      await api("DELETE", `/api/guilds/${state.guildID}/economy/shop/${it.id}`);
+      toast(`Deleted “${it.name}”`);
+      renderShop(card);
+    } catch (e) { toast(e.message, true); }
+  };
+  return el("tr", {},
+    el("td", {}, it.name),
+    el("td", { class: "muted" }, it.description || "—"),
+    el("td", { style: "text-align:right" }, fmtNum(it.price)),
+    el("td", {}, roleChip(it.role_id)),
+    el("td", {}, it.stock < 0 ? el("span", { class: "badge" }, "Unlimited") : String(it.stock)),
+    el("td", { style: "text-align:right;white-space:nowrap" }, edit, del));
+}
+
+// editShopItem swaps a card into an inline edit form for one item.
+function editShopItem(card, it) {
+  const form = shopItemForm(it);
+  const save = el("button", { class: "btn btn-primary" }, "Save");
+  const cancel = el("button", { class: "btn btn-ghost" }, "Cancel");
+  cancel.onclick = () => renderShop(card);
+  save.onclick = async () => {
+    const body = form.read();
+    if (!body.name) { toast("Item name is required", true); return; }
+    save.disabled = true;
+    try {
+      await api("PATCH", `/api/guilds/${state.guildID}/economy/shop/${it.id}`, body);
+      toast(`Saved “${body.name}”`);
+      renderShop(card);
+    } catch (e) {
+      toast(e.message, true);
+      save.disabled = false;
+    }
+  };
+  card.replaceChildren(
+    el("div", { class: "card-head" }, el("h2", {}, `Edit “${it.name}”`)),
+    el("div", { class: "stack", style: "margin-top:16px" }, form.node,
+      el("div", { class: "card-actions" }, save, cancel)));
+}
+
+async function pageEconomy(root) {
+  await loadGuildData(state.guildID);
+  const lb = el("div", { class: "card" });
+  const shop = el("div", { class: "card" });
+  root.replaceChildren(
+    pageHead("Economy", "Net-worth leaderboard and shop management", "coins"),
+    lb, shop);
+  await Promise.all([renderEconLeaderboard(lb), renderShop(shop)]);
+}
+
+/* ------------------------------------------------- leveling console (Inc3) */
+
+const LVL_LIMIT = 25;
+
+async function renderLevelLeaderboard(card) {
+  card.replaceChildren(spinner());
+  let page;
+  try {
+    const qs = new URLSearchParams({ limit: String(LVL_LIMIT), offset: String(state.lvl.offset) });
+    page = await api("GET", `/api/guilds/${state.guildID}/leveling/leaderboard?${qs}`);
+  } catch (e) {
+    card.replaceChildren(emptyState("trophy", "Couldn't load leaderboard", e.message));
+    return;
+  }
+  card.replaceChildren(el("div", { class: "card-head" },
+    el("h2", {}, "XP leaderboard"), el("div", { class: "sub" }, `${page.total} ranked`)));
+  if (!page.members.length) {
+    card.appendChild(emptyState("trophy", "No XP yet", "Members appear here once they earn XP."));
+    return;
+  }
+  const body = el("tbody");
+  page.members.forEach((m, i) => {
+    body.appendChild(el("tr", {},
+      el("td", { class: "muted" }, "#" + (state.lvl.offset + i + 1)),
+      memberCell(m),
+      el("td", {}, el("span", { class: "badge act-timeout" }, "Lvl " + m.level)),
+      el("td", { style: "text-align:right" }, fmtNum(m.xp)),
+      el("td", { style: "text-align:right" }, fmtNum(m.messages))));
+  });
+  card.appendChild(el("div", { class: "table-wrap" }, el("table", { class: "table" },
+    el("thead", {}, el("tr", {},
+      el("th", {}, "Rank"), el("th", {}, "Member"), el("th", {}, "Level"),
+      el("th", { style: "text-align:right" }, "XP"),
+      el("th", { style: "text-align:right" }, "Messages"))),
+    body)));
+  card.appendChild(pager(state.lvl.offset, page.members.length, page.total, LVL_LIMIT,
+    (o) => { state.lvl.offset = o; renderLevelLeaderboard(card); }));
+}
+
+async function renderRewards(card) {
+  card.replaceChildren(spinner());
+  let data;
+  try {
+    data = await api("GET", `/api/guilds/${state.guildID}/leveling/rewards`);
+  } catch (e) {
+    card.replaceChildren(emptyState("trophy", "Couldn't load rewards", e.message));
+    return;
+  }
+  const rewards = data.rewards || [];
+
+  const level = el("input", { class: "input", type: "number", min: "1", placeholder: "Level", style: "max-width:100px" });
+  const role = roleSelect("", false);
+  role.style.maxWidth = "200px";
+  const add = el("button", { class: "btn btn-primary" }, "Set reward");
+  add.onclick = async () => {
+    const lv = Number(level.value);
+    if (!lv || lv < 1) { toast("Enter a level of 1 or more", true); return; }
+    if (!role.value) { toast("Pick a role", true); return; }
+    add.disabled = true;
+    try {
+      await api("PUT", `/api/guilds/${state.guildID}/leveling/rewards/${lv}`, { role_id: role.value });
+      toast(`Reward set for level ${lv}`);
+      renderRewards(card);
+    } catch (e) {
+      toast(e.message, true);
+      add.disabled = false;
+    }
+  };
+
+  card.replaceChildren(
+    el("div", { class: "card-head" }, el("h2", {}, "Level rewards"),
+      el("div", { class: "sub" }, "Grant a role when a member reaches a level.")),
+    el("div", { class: "toolbar", style: "margin-top:16px" },
+      el("label", { class: "dur" }, el("span", { class: "muted" }, "Level"), level),
+      el("label", { class: "dur" }, el("span", { class: "muted" }, "Role"), role), add));
+
+  if (!rewards.length) {
+    card.appendChild(emptyState("trophy", "No rewards", "Add a level reward above."));
+    return;
+  }
+  const body = el("tbody");
+  for (const rw of rewards) {
+    const del = el("button", { class: "btn btn-ghost btn-sm btn-danger", title: "Remove" }, icon("ban"));
+    del.onclick = async () => {
+      if (!(await confirmDialog("Remove reward?", `Clear the role reward at level ${rw.level}.`, true))) return;
+      try {
+        await api("DELETE", `/api/guilds/${state.guildID}/leveling/rewards/${rw.level}`);
+        toast(`Removed level ${rw.level} reward`);
+        renderRewards(card);
+      } catch (e) { toast(e.message, true); }
+    };
+    body.appendChild(el("tr", {},
+      el("td", {}, el("span", { class: "badge act-timeout" }, "Lvl " + rw.level)),
+      el("td", {}, roleChip(rw.role_id)),
+      el("td", { style: "text-align:right" }, del)));
+  }
+  card.appendChild(el("div", { class: "table-wrap" }, el("table", { class: "table" },
+    el("thead", {}, el("tr", {}, el("th", {}, "Level"), el("th", {}, "Role"), el("th", {}, ""))),
+    body)));
+}
+
+async function pageLeveling(root) {
+  await loadGuildData(state.guildID);
+  const lb = el("div", { class: "card" });
+  const rw = el("div", { class: "card" });
+  root.replaceChildren(
+    pageHead("Leveling", "XP leaderboard and level rewards", "trophy"),
+    lb, rw);
+  await Promise.all([renderLevelLeaderboard(lb), renderRewards(rw)]);
+}
+
+/* ------------------------------------------------------------------ router */
 
 function currentRoute() {
   const h = (location.hash || "#/overview").replace(/^#\/?/, "");
   const parts = h.split("/").filter(Boolean);
   if (parts[0] === "m" && parts[1]) return { kind: "module", name: parts[1] };
   if (parts[0] === "moderation") return { kind: "moderation" };
+  if (parts[0] === "economy") return { kind: "economy" };
+  if (parts[0] === "leveling") return { kind: "leveling" };
   if (parts[0] === "audit") return { kind: "audit" };
   return { kind: "overview" };
 }
@@ -627,6 +969,8 @@ async function router() {
   markActiveNav(route);
   if (route.kind === "module") return pageModule(root, route.name);
   if (route.kind === "moderation") return pageModeration(root);
+  if (route.kind === "economy") return pageEconomy(root);
+  if (route.kind === "leveling") return pageLeveling(root);
   if (route.kind === "audit") return pageAudit(root);
   return pageOverview(root);
 }
@@ -638,6 +982,8 @@ function markActiveNav(route) {
       (route.kind === "overview" && r === "overview") ||
       (route.kind === "audit" && r === "audit") ||
       (route.kind === "moderation" && r === "moderation") ||
+      (route.kind === "economy" && r === "economy") ||
+      (route.kind === "leveling" && r === "leveling") ||
       (route.kind === "module" && r === `m/${route.name}`);
     a.classList.toggle("active", active);
   }
@@ -653,6 +999,8 @@ function navLink(route, label, ic) {
 // feature flag is true, so a console never appears without a backend seam.
 const CONSOLES = [
   { key: "moderation", route: "moderation", label: "Moderation", icon: "shield" },
+  { key: "economy", route: "economy", label: "Economy", icon: "coins" },
+  { key: "leveling", route: "leveling", label: "Leveling", icon: "trophy" },
 ];
 
 async function buildNav() {
@@ -762,6 +1110,8 @@ async function selectGuild(id) {
   state.guildID = id;
   state.cacheKey = null;
   state.mod = { target: "", action: "", offset: 0 };
+  state.econ = { offset: 0 };
+  state.lvl = { offset: 0 };
   try {
     state.features = await api("GET", `/api/guilds/${id}/features`);
   } catch {

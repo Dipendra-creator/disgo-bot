@@ -217,6 +217,9 @@ select.input { appearance: none; cursor: pointer;
 .act-ban { color: var(--error); border-color: color-mix(in srgb, var(--error) 38%, transparent); background: color-mix(in srgb, var(--error) 12%, transparent); }
 .act-unban, .act-untimeout { color: var(--success); border-color: color-mix(in srgb, var(--success) 35%, transparent); background: color-mix(in srgb, var(--success) 12%, transparent); }
 
+.stack { display: flex; flex-direction: column; gap: 14px; }
+.role-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+
 /* Confirmation modal */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(2px); display: flex; align-items: center; justify-content: center; z-index: 60; padding: 20px; }
 .modal { width: 100%; max-width: 400px; background: var(--surface); border: 1px solid var(--border-2); border-radius: var(--r-lg); padding: 24px; box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5); }

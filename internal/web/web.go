@@ -37,6 +37,8 @@ type Server struct {
 	order []string                       // module names in registration order
 
 	moderation shared.Moderation // moderation console seam, if a module exposes it
+	economy    shared.Economy    // economy console seam, if a module exposes it
+	leveling   shared.Leveling   // leveling console seam, if a module exposes it
 
 	http *http.Server
 }
@@ -83,6 +85,12 @@ func New(deps *shared.Deps, modules []shared.Module) (*Server, error) {
 		if mod, ok := m.(shared.Moderation); ok {
 			s.moderation = mod
 		}
+		if eco, ok := m.(shared.Economy); ok {
+			s.economy = eco
+		}
+		if lvl, ok := m.(shared.Leveling); ok {
+			s.leveling = lvl
+		}
 	}
 	s.http = &http.Server{
 		Addr:              cfg.Addr,
@@ -114,6 +122,19 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/guilds/{id}/moderation/cases", s.requireAuth(s.requireGuildManage(s.handleModCases)))
 	mux.HandleFunc("PATCH /api/guilds/{id}/moderation/cases/{num}", s.requireAuth(s.requireGuildManage(s.handleModCaseReason)))
 	mux.HandleFunc("POST /api/guilds/{id}/moderation/actions", s.requireAuth(s.requireGuildManage(s.handleModAction)))
+
+	// Economy console — leaderboard + shop CRUD.
+	mux.HandleFunc("GET /api/guilds/{id}/economy/leaderboard", s.requireAuth(s.requireGuildManage(s.handleEconLeaderboard)))
+	mux.HandleFunc("GET /api/guilds/{id}/economy/shop", s.requireAuth(s.requireGuildManage(s.handleEconShop)))
+	mux.HandleFunc("POST /api/guilds/{id}/economy/shop", s.requireAuth(s.requireGuildManage(s.handleEconShopAdd)))
+	mux.HandleFunc("PATCH /api/guilds/{id}/economy/shop/{item}", s.requireAuth(s.requireGuildManage(s.handleEconShopUpdate)))
+	mux.HandleFunc("DELETE /api/guilds/{id}/economy/shop/{item}", s.requireAuth(s.requireGuildManage(s.handleEconShopDelete)))
+
+	// Leveling console — XP leaderboard + level rewards.
+	mux.HandleFunc("GET /api/guilds/{id}/leveling/leaderboard", s.requireAuth(s.requireGuildManage(s.handleLevelLeaderboard)))
+	mux.HandleFunc("GET /api/guilds/{id}/leveling/rewards", s.requireAuth(s.requireGuildManage(s.handleLevelRewards)))
+	mux.HandleFunc("PUT /api/guilds/{id}/leveling/rewards/{level}", s.requireAuth(s.requireGuildManage(s.handleLevelRewardSet)))
+	mux.HandleFunc("DELETE /api/guilds/{id}/leveling/rewards/{level}", s.requireAuth(s.requireGuildManage(s.handleLevelRewardDelete)))
 
 	// Feature discovery — which management consoles the dashboard should show.
 	mux.HandleFunc("GET /api/guilds/{id}/features", s.requireAuth(s.requireGuildManage(s.handleFeatures)))

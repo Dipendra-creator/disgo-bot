@@ -216,6 +216,48 @@ func (r *repo) removeItem(ctx context.Context, guildID int64, name string) (bool
 	return n > 0, nil
 }
 
+// updateItem overwrites an item's editable fields by id (scoped to the guild).
+// It reports whether a row matched.
+func (r *repo) updateItem(ctx context.Context, guildID, id int64, name, desc string, price, roleID int64, stock int) (bool, error) {
+	res, err := r.db.NewUpdate().Model((*ShopItem)(nil)).
+		Set("name = ?", name).
+		Set("description = ?", desc).
+		Set("price = ?", price).
+		Set("role_id = ?", roleID).
+		Set("stock = ?", stock).
+		Where("id = ? AND guild_id = ?", id, guildID).Exec(ctx)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}
+
+// removeItemByID deletes a shop item by id (scoped to the guild).
+func (r *repo) removeItemByID(ctx context.Context, guildID, id int64) (bool, error) {
+	res, err := r.db.NewDelete().Model((*ShopItem)(nil)).
+		Where("id = ? AND guild_id = ?", id, guildID).Exec(ctx)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}
+
+// getItemByID returns a single shop item by id (scoped to the guild).
+func (r *repo) getItemByID(ctx context.Context, guildID, id int64) (*ShopItem, error) {
+	it := new(ShopItem)
+	err := r.db.NewSelect().Model(it).
+		Where("id = ? AND guild_id = ?", id, guildID).Limit(1).Scan(ctx)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrItemNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return it, nil
+}
+
 func (r *repo) listItems(ctx context.Context, guildID int64, offset, limit int) ([]ShopItem, error) {
 	var rows []ShopItem
 	err := r.db.NewSelect().Model(&rows).

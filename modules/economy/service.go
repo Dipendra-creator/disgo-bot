@@ -183,6 +183,39 @@ func (s *Service) RemoveItem(ctx context.Context, guildID, name string) (bool, e
 	return s.repo.removeItem(ctx, pid(guildID), name)
 }
 
+// CreateItem registers a shop item and returns the created row (with its id).
+func (s *Service) CreateItem(ctx context.Context, guildID, name, desc string, price int64, roleID string, stock int) (*ShopItem, error) {
+	it := &ShopItem{
+		GuildID:     pid(guildID),
+		Name:        name,
+		Description: desc,
+		Price:       price,
+		RoleID:      pid(roleID),
+		Stock:       stock,
+	}
+	if err := s.repo.addItem(ctx, it); err != nil {
+		return nil, err
+	}
+	return it, nil
+}
+
+// EditItem overwrites an existing shop item by id, returning the updated row.
+func (s *Service) EditItem(ctx context.Context, guildID string, id int64, name, desc string, price int64, roleID string, stock int) (*ShopItem, error) {
+	ok, err := s.repo.updateItem(ctx, pid(guildID), id, name, desc, price, pid(roleID), stock)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, ErrItemNotFound
+	}
+	return s.repo.getItemByID(ctx, pid(guildID), id)
+}
+
+// RemoveItemByID deletes a shop item by id.
+func (s *Service) RemoveItemByID(ctx context.Context, guildID string, id int64) (bool, error) {
+	return s.repo.removeItemByID(ctx, pid(guildID), id)
+}
+
 // Buy purchases one unit of a shop item, granting its role when configured.
 func (s *Service) Buy(ctx context.Context, guildID, userID, name string) (*ShopItem, int64, error) {
 	set, err := s.settings(ctx, pid(guildID))
